@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Package, Wrench, Users, Receipt, Building2, Search, Plus, X, Trash2, Pencil,
-  Calendar, Phone, Mail, MapPin, IdCard, Printer, Tag, ChevronDown, ChevronRight,
+  Calendar, Phone, Mail, MapPin, CreditCard, Printer, Tag, ChevronDown, ChevronRight,
   ChevronLeft, AlertCircle, CircleDot, AlertTriangle, FileText, CheckCircle2, Clock,
   Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, LogOut, Mail as MailIcon, Lock,
 } from "lucide-react";
@@ -566,7 +566,7 @@ function TabReparaciones({ data, persist, crearContacto, irAFacturar, imprimir }
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                       <User size={14} color="#6B6560" />
                       <span className="sg" style={{ fontWeight: 600, fontSize: 15 }}>{contacto?.nombre || "Cliente eliminado"}</span>
-                      {contacto?.dniCuit && <span style={{ fontSize: 11.5, color: "#8C8880", display: "flex", alignItems: "center", gap: 3 }}><IdCard size={11} /> {contacto.dniCuit}</span>}
+                      {contacto?.dniCuit && <span style={{ fontSize: 11.5, color: "#8C8880", display: "flex", alignItems: "center", gap: 3 }}><CreditCard size={11} /> {contacto.dniCuit}</span>}
                       {contacto?.telefono && <span style={{ fontSize: 11.5, color: "#8C8880", display: "flex", alignItems: "center", gap: 3 }}><Phone size={11} /> {contacto.telefono}</span>}
                     </div>
                     <div style={{ fontSize: 13.5, marginBottom: 4 }}><strong>{o.producto}</strong> <span className="mono" style={{ fontSize: 12, background: "#FAFAF8", border: "1px dashed #D8D5CE", borderRadius: 6, padding: "2px 6px", marginLeft: 4 }}>{o.numeroSerie}</span></div>
@@ -681,7 +681,7 @@ function TabAgenda({ data, persist, deudaDe, imprimir }) {
             <div className="sg" style={{ fontSize: 17, fontWeight: 700 }}>{selected.nombre}</div>
             <div style={{ fontSize: 12, color: "#8C8880" }}>{selected.tipo === "empresa" ? "Empresa" : "Cliente"}</div>
             <div style={{ fontSize: 12.5, color: "#6B6560", marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
-              {selected.dniCuit && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><IdCard size={12} />{selected.dniCuit}</span>}
+              {selected.dniCuit && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><CreditCard size={12} />{selected.dniCuit}</span>}
               {selected.telefono && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><Phone size={12} />{selected.telefono}</span>}
             </div>
           </div>
