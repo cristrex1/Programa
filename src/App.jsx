@@ -3,7 +3,7 @@ import {
   Package, Wrench, Users, Receipt, Building2, Search, Plus, X, Trash2, Pencil,
   Calendar, Phone, Mail, MapPin, CreditCard, Printer, Tag, ChevronDown, ChevronRight,
   ChevronLeft, AlertCircle, CircleDot, AlertTriangle, FileText, CheckCircle2, Clock,
-  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, LogOut, Mail as MailIcon, Lock, RefreshCw,
+  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, RefreshCw, LogOut, Mail as MailIcon, Lock,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -32,9 +32,10 @@ async function fetchDolarOficial() {
   } catch (e) {}
   return null;
 }
-function precioVentaDe(producto, dolarVenta) {
+function precioVentaDe(producto, dolarVenta, categorias) {
   const costo = Number(producto?.costoUSD) || 0;
-  const margen = Number(producto?.margen) || 0;
+  const categoria = categorias?.find((c) => c.id === producto?.categoriaId);
+  const margen = categoria ? (Number(categoria.margen) || 0) : (Number(producto?.margen) || 0);
   return costo * (Number(dolarVenta) || 0) * (1 + margen / 100);
 }
 
@@ -60,7 +61,6 @@ const CONDICIONES_IVA = [
   { value: "exento", label: "Exento", factura: "C" },
 ];
 
-const STORAGE_KEY = "sistema-integrado-v1";
 const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null };
 
 const TABS = [
@@ -176,14 +176,16 @@ function ClienteSelector({ contactos, value, onChange, onCreateContacto }) {
 function CategoriaSelector({ categorias, value, onChange, onCreateCategoria }) {
   const [showNew, setShowNew] = useState(false);
   const [nombre, setNombre] = useState("");
+  const [margen, setMargen] = useState("30");
 
   if (showNew) {
     return (
       <div style={{ display: "flex", gap: 6 }}>
-        <input autoFocus style={inputStyle} placeholder="Nombre de la categoría" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+        <input autoFocus style={{ ...inputStyle, flex: 2 }} placeholder="Nombre de la categoría" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+        <input style={{ ...inputStyle, width: 70 }} type="number" value={margen} onChange={(e) => setMargen(e.target.value)} placeholder="% margen" />
         <button type="button" onClick={() => {
           if (!nombre.trim()) return;
-          const c = onCreateCategoria(nombre.trim());
+          const c = onCreateCategoria(nombre.trim(), margen);
           onChange(c.id);
           setNombre("");
           setShowNew(false);
@@ -274,6 +276,9 @@ function SistemaIntegrado({ session }) {
   const [ventaDraft, setVentaDraft] = useState(null); // prefill from una orden reparada
   const [printPayload, setPrintPayload] = useState(null);
 
+  const [dolarLoading, setDolarLoading] = useState(false);
+  const [editandoDolar, setEditandoDolar] = useState(false);
+
   useEffect(() => {
     (async () => {
       const { data: row } = await supabase.from("estado_sistema").select("data").eq("id", 1).maybeSingle();
@@ -281,16 +286,6 @@ function SistemaIntegrado({ session }) {
       setLoading(false);
     })();
   }, []);
-
-  async function persist(patch) {
-    const next = { ...data, ...patch };
-    setData(next);
-    const { error } = await supabase.from("estado_sistema").upsert({ id: 1, data: next, updated_at: new Date().toISOString() });
-    setSaveError(!!error);
-  }
-
-  const [dolarLoading, setDolarLoading] = useState(false);
-  const [editandoDolar, setEditandoDolar] = useState(false);
 
   async function actualizarDolar(dataActual) {
     setDolarLoading(true);
@@ -304,10 +299,23 @@ function SistemaIntegrado({ session }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  function crearCategoria(nombre) {
-    const c = { id: uid(), nombre };
+  function crearCategoria(nombre, margen) {
+    const c = { id: uid(), nombre, margen: Number(margen) || 0 };
     persist({ categorias: [...data.categorias, c] });
     return c;
+  }
+  function editarCategoria(id, patch) {
+    persist({ categorias: data.categorias.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
+  }
+  function eliminarCategoria(id) {
+    persist({ categorias: data.categorias.filter((c) => c.id !== id), productos: data.productos.map((p) => (p.categoriaId === id ? { ...p, categoriaId: null } : p)) });
+  }
+
+  async function persist(patch) {
+    const next = { ...data, ...patch };
+    setData(next);
+    const { error } = await supabase.from("estado_sistema").upsert({ id: 1, data: next, updated_at: new Date().toISOString() });
+    setSaveError(!!error);
   }
 
   function crearContacto(fields) {
@@ -340,9 +348,16 @@ function SistemaIntegrado({ session }) {
     const numero = `${venta.tipoComprobante === "factura" ? "FC-" + (CONDICIONES_IVA.find((c) => c.value === venta.condicionIva)?.factura || "B") : "RM"}-${String(Math.floor(Math.random() * 90000) + 10000)}`;
     const ventaFinal = { id: uid(), numero, fecha: todayISO(), estadoAfip: venta.tipoComprobante === "factura" ? "pendiente_afip" : "no_aplica", ...venta };
 
-    // 2) marcar unidades vendidas
+    // 2) marcar unidades vendidas (productos con control por número de serie)
     const unidadesIds = venta.items.filter((it) => it.tipo === "stock" && it.unidadId).map((it) => it.unidadId);
     const nextUnidades = data.unidades.map((u) => (unidadesIds.includes(u.id) ? { ...u, estado: "vendido" } : u));
+
+    // 2b) descontar cantidad de productos sin control por número de serie
+    const descuentos = {};
+    venta.items.filter((it) => it.tipo === "stock" && it.productId && !it.unidadId).forEach((it) => {
+      descuentos[it.productId] = (descuentos[it.productId] || 0) + (Number(it.cantidad) || 0);
+    });
+    const nextProductos = data.productos.map((p) => (descuentos[p.id] ? { ...p, cantidadStock: Math.max(0, (Number(p.cantidadStock) || 0) - descuentos[p.id]) } : p));
 
     // 3) generar cargo en cuenta corriente si no está cobrada en el acto
     let nextMovimientos = data.movimientos;
@@ -356,7 +371,7 @@ function SistemaIntegrado({ session }) {
       nextOrdenes = data.ordenes.map((o) => (o.id === venta.origenOrdenId ? { ...o, estado: "entregado", ventaId: ventaFinal.id } : o));
     }
 
-    persist({ ventas: [ventaFinal, ...data.ventas], unidades: nextUnidades, movimientos: nextMovimientos, ordenes: nextOrdenes });
+    persist({ ventas: [ventaFinal, ...data.ventas], unidades: nextUnidades, productos: nextProductos, movimientos: nextMovimientos, ordenes: nextOrdenes });
     setVentaDraft(null);
     return ventaFinal;
   }
@@ -388,7 +403,7 @@ function SistemaIntegrado({ session }) {
         <div style={{ maxWidth: 1000, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <div className="sg" style={{ color: "#fff", fontSize: 17, fontWeight: 700, letterSpacing: -0.3 }}>Sistema de gestión</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               {saveError && <div style={{ color: "#E5A15E", fontSize: 12 }}>No se pudo guardar</div>}
               {editandoDolar ? (
                 <DolarEditor
@@ -430,7 +445,7 @@ function SistemaIntegrado({ session }) {
         {loading ? (
           <div style={{ textAlign: "center", padding: 40, color: "#A7A29A" }}>Cargando…</div>
         ) : tab === "stock" ? (
-          <TabStock data={data} persist={persist} imprimir={imprimir} crearCategoria={crearCategoria} />
+          <TabStock data={data} persist={persist} imprimir={imprimir} crearCategoria={crearCategoria} editarCategoria={editarCategoria} eliminarCategoria={eliminarCategoria} />
         ) : tab === "reparaciones" ? (
           <TabReparaciones data={data} persist={persist} crearContacto={crearContacto} irAFacturar={irAFacturarDesdeOrden} imprimir={imprimir} />
         ) : tab === "agenda" ? (
@@ -444,8 +459,9 @@ function SistemaIntegrado({ session }) {
 }
 
 // ---------- TAB: STOCK ----------
-function TabStock({ data, persist, imprimir, crearCategoria }) {
+function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, eliminarCategoria }) {
   const { productos, unidades, categorias, dolarVenta } = data;
+  const [showCategorias, setShowCategorias] = useState(false);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState({});
   const [showProductForm, setShowProductForm] = useState(false);
@@ -494,6 +510,7 @@ function TabStock({ data, persist, imprimir, crearCategoria }) {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por producto, categoría o número de serie…" style={{ width: "100%", padding: "10px 12px 10px 36px", borderRadius: 10, border: "1px solid #E4E2DD", background: "#fff", fontSize: 14, boxSizing: "border-box" }} />
         </div>
         <button onClick={() => imprimir({ tipo: "inventario", productos: filtered, unidades, categorias, dolarVenta })} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Printer size={15} /> Imprimir</button>
+        <button onClick={() => setShowCategorias(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Tag size={15} /> Categorías</button>
         <button onClick={() => { setEditingProduct(null); setShowProductForm(true); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 10, padding: "0 16px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Plus size={16} /> Producto</button>
       </div>
 
@@ -510,23 +527,32 @@ function TabStock({ data, persist, imprimir, crearCategoria }) {
             const exp = !!expanded[p.id];
             return (
               <div key={p.id} style={{ background: "#fff", border: "1px solid #E4E2DD", borderRadius: 12, overflow: "hidden" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 14px", cursor: "pointer" }} onClick={() => setExpanded((s) => ({ ...s, [p.id]: !s[p.id] }))}>
-                  <button style={{ background: "none", border: "none", cursor: "pointer", color: "#A7A29A", padding: 0 }}>{exp ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</button>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 14px", cursor: p.controlSerie === false ? "default" : "pointer" }} onClick={() => { if (p.controlSerie !== false) setExpanded((s) => ({ ...s, [p.id]: !s[p.id] })); }}>
+                  {p.controlSerie === false ? <span style={{ width: 18 }} /> : <button style={{ background: "none", border: "none", cursor: "pointer", color: "#A7A29A", padding: 0 }}>{exp ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</button>}
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span className="sg" style={{ fontWeight: 600, fontSize: 15 }}>{p.nombre}</span>
                       {p.categoriaId && categorias.find((c) => c.id === p.categoriaId) && <span style={{ fontSize: 11, color: "#6B6560", background: "#F0EEE9", padding: "2px 8px", borderRadius: 999, display: "flex", alignItems: "center", gap: 4 }}><Tag size={10} /> {categorias.find((c) => c.id === p.categoriaId).nombre}</span>}
                     </div>
-                    <div style={{ fontSize: 12, color: "#8C8880", marginTop: 2 }}>{us.length} unidad{us.length !== 1 ? "es" : ""} · {disp} disponible{disp !== 1 ? "s" : ""} · costo U$D {p.costoUSD || 0} · margen {p.margen || 0}%</div>
+                    <div style={{ fontSize: 12, color: "#8C8880", marginTop: 2 }}>
+                      {p.controlSerie === false ? `${p.cantidadStock || 0} en stock` : `${us.length} unidad${us.length !== 1 ? "es" : ""} · ${disp} disponible${disp !== 1 ? "s" : ""}`} · costo U$D {p.costoUSD || 0}
+                    </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div className="sg" style={{ fontSize: 15, fontWeight: 700 }}>{fmtMoney(precioVentaDe(p, dolarVenta))}</div>
+                    <div className="sg" style={{ fontSize: 15, fontWeight: 700 }}>{fmtMoney(precioVentaDe(p, dolarVenta, categorias))}</div>
                     <div style={{ fontSize: 10.5, color: "#A7A29A" }}>precio de venta</div>
                   </div>
                   <button onClick={(e) => { e.stopPropagation(); setEditingProduct(p); setShowProductForm(true); }} style={{ background: "none", border: "none", color: "#A7A29A", cursor: "pointer", padding: 6 }}><Pencil size={15} /></button>
                   <button onClick={(e) => { e.stopPropagation(); if (confirm(`¿Eliminar "${p.nombre}"?`)) deleteProduct(p.id); }} style={{ background: "none", border: "none", color: "#C97B7B", cursor: "pointer", padding: 6 }}><Trash2 size={15} /></button>
                 </div>
-                {exp && (
+                {p.controlSerie === false ? (
+                  <div style={{ borderTop: "1px solid #EFEDE8", padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12.5, color: "#6B6560" }}>Cantidad en stock:</span>
+                    <button onClick={() => persist({ productos: productos.map((x) => (x.id === p.id ? { ...x, cantidadStock: Math.max(0, (Number(x.cantidadStock) || 0) - 1) } : x)) })} style={{ background: "#F0EEE9", border: "none", borderRadius: 6, width: 24, height: 24, cursor: "pointer", fontWeight: 700 }}>−</button>
+                    <span className="sg" style={{ fontWeight: 700, fontSize: 14, minWidth: 24, textAlign: "center" }}>{p.cantidadStock || 0}</span>
+                    <button onClick={() => persist({ productos: productos.map((x) => (x.id === p.id ? { ...x, cantidadStock: (Number(x.cantidadStock) || 0) + 1 } : x)) })} style={{ background: "#F0EEE9", border: "none", borderRadius: 6, width: 24, height: 24, cursor: "pointer", fontWeight: 700 }}>+</button>
+                  </div>
+                ) : exp && (
                   <div style={{ borderTop: "1px solid #EFEDE8", padding: "10px 14px 14px" }}>
                     {us.length === 0 ? <div style={{ fontSize: 13, color: "#A7A29A", marginBottom: 10 }}>Sin unidades cargadas.</div> : (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
@@ -564,6 +590,35 @@ function TabStock({ data, persist, imprimir, crearCategoria }) {
           <UnitForm initial={editingUnit} onSave={(f) => saveUnit(unitFormFor, f)} />
         </Modal>
       )}
+      {showCategorias && (
+        <Modal title="Categorías" onClose={() => setShowCategorias(false)} wide>
+          <CategoriasModal categorias={categorias} onCrear={crearCategoria} onEditar={editarCategoria} onEliminar={eliminarCategoria} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+function CategoriasModal({ categorias, onCrear, onEditar, onEliminar }) {
+  const [nombre, setNombre] = useState("");
+  const [margen, setMargen] = useState("30");
+  return (
+    <div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+        {categorias.length === 0 && <div style={{ fontSize: 13, color: "#A7A29A" }}>Todavía no hay categorías cargadas.</div>}
+        {categorias.map((c) => (
+          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#FAFAF8", borderRadius: 8, padding: "8px 10px" }}>
+            <span style={{ flex: 1, fontSize: 13.5 }}>{c.nombre}</span>
+            <input type="number" defaultValue={c.margen} onBlur={(e) => onEditar(c.id, { margen: Number(e.target.value) || 0 })} style={{ ...inputStyle, width: 70, padding: "6px 8px" }} />
+            <span style={{ fontSize: 12, color: "#8C8880" }}>% margen</span>
+            <button onClick={() => { if (confirm(`¿Eliminar la categoría "${c.nombre}"?`)) onEliminar(c.id); }} style={{ background: "none", border: "none", color: "#C97B7B", cursor: "pointer" }}><Trash2 size={14} /></button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end", borderTop: "1px solid #EFEDE8", paddingTop: 12 }}>
+        <div style={{ flex: 1 }}><Field label="Nueva categoría"><input style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} /></Field></div>
+        <div style={{ width: 90 }}><Field label="% margen"><input style={inputStyle} type="number" value={margen} onChange={(e) => setMargen(e.target.value)} /></Field></div>
+        <button onClick={() => { if (!nombre.trim()) return; onCrear(nombre.trim(), margen); setNombre(""); setMargen("30"); }} style={{ background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 13.5, fontWeight: 600, cursor: "pointer", marginBottom: 12 }}>Agregar</button>
+      </div>
     </div>
   );
 }
@@ -571,13 +626,17 @@ function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta }
   const [nombre, setNombre] = useState(initial?.nombre || "");
   const [categoriaId, setCategoriaId] = useState(initial?.categoriaId || null);
   const [costoUSD, setCostoUSD] = useState(initial?.costoUSD ?? "");
-  const [margen, setMargen] = useState(initial?.margen ?? "30");
+  const [margenPropio, setMargenPropio] = useState(initial?.margen ?? "30");
+  const [controlSerie, setControlSerie] = useState(initial?.controlSerie ?? true);
+  const [cantidadStock, setCantidadStock] = useState(initial?.cantidadStock ?? "0");
   const [descripcion, setDescripcion] = useState(initial?.descripcion || "");
 
-  const precioVenta = (Number(costoUSD) || 0) * (Number(dolarVenta) || 0) * (1 + (Number(margen) || 0) / 100);
+  const categoria = categorias.find((c) => c.id === categoriaId);
+  const margenEfectivo = categoria ? (Number(categoria.margen) || 0) : (Number(margenPropio) || 0);
+  const precioVenta = (Number(costoUSD) || 0) * (Number(dolarVenta) || 0) * (1 + margenEfectivo / 100);
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (!nombre.trim()) return; onSave({ nombre: nombre.trim(), categoriaId, costoUSD: Number(costoUSD) || 0, margen: Number(margen) || 0, descripcion: descripcion.trim() }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (!nombre.trim()) return; onSave({ nombre: nombre.trim(), categoriaId, costoUSD: Number(costoUSD) || 0, margen: categoria ? null : (Number(margenPropio) || 0), controlSerie, cantidadStock: controlSerie ? null : (Number(cantidadStock) || 0), descripcion: descripcion.trim() }); }}>
       <Field label="Nombre del producto"><input autoFocus style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} /></Field>
       <Field label="Categoría"><CategoriaSelector categorias={categorias} value={categoriaId} onChange={setCategoriaId} onCreateCategoria={crearCategoria} /></Field>
       <div style={{ display: "flex", gap: 10 }}>
@@ -585,12 +644,25 @@ function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta }
           <Field label="Costo (U$D)"><input style={inputStyle} type="number" value={costoUSD} onChange={(e) => setCostoUSD(e.target.value)} placeholder="0" /></Field>
         </div>
         <div style={{ flex: 1 }}>
-          <Field label="Margen de ganancia (%)"><input style={inputStyle} type="number" value={margen} onChange={(e) => setMargen(e.target.value)} placeholder="30" /></Field>
+          {categoria ? (
+            <Field label="Margen de ganancia (%)"><div style={{ ...inputStyle, background: "#F0EEE9", color: "#6B6560" }}>{categoria.margen}% (de "{categoria.nombre}")</div></Field>
+          ) : (
+            <Field label="Margen de ganancia (%)"><input style={inputStyle} type="number" value={margenPropio} onChange={(e) => setMargenPropio(e.target.value)} placeholder="30" /></Field>
+          )}
         </div>
       </div>
       <div style={{ background: "#FAFAF8", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13 }}>
         Precio de venta (con dólar a {fmtMoney(dolarVenta)}): <strong className="sg">{fmtMoney(precioVenta)}</strong>
       </div>
+      <Field label="¿Controla por número de serie?">
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" onClick={() => setControlSerie(true)} style={{ flex: 1, padding: 8, borderRadius: 8, border: controlSerie ? "2px solid #0F6B5C" : "1px solid #E4E2DD", background: controlSerie ? "#E7F2EF" : "#fff", color: controlSerie ? "#0F6B5C" : "#6B6560", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Sí, por N° de serie</button>
+          <button type="button" onClick={() => setControlSerie(false)} style={{ flex: 1, padding: 8, borderRadius: 8, border: !controlSerie ? "2px solid #0F6B5C" : "1px solid #E4E2DD", background: !controlSerie ? "#E7F2EF" : "#fff", color: !controlSerie ? "#0F6B5C" : "#6B6560", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>No, solo cantidad</button>
+        </div>
+      </Field>
+      {!controlSerie && (
+        <Field label="Cantidad en stock"><input style={inputStyle} type="number" value={cantidadStock} onChange={(e) => setCantidadStock(e.target.value)} /></Field>
+      )}
       <Field label="Descripción (opcional)"><textarea style={{ ...inputStyle, minHeight: 60 }} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} /></Field>
       <button type="submit" style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{initial ? "Guardar cambios" : "Crear producto"}</button>
     </form>
@@ -993,7 +1065,7 @@ function ServForm({ onSave }) {
 
 // ---------- TAB: FACTURACIÓN ----------
 function TabFacturacion({ data, persist, crearContacto, registrarVenta, draft, clearDraft, imprimir }) {
-  const { ventas, contactos, productos, unidades, dolarVenta } = data;
+  const { ventas, contactos, productos, unidades, dolarVenta, categorias } = data;
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(!!draft);
   const [viewingId, setViewingId] = useState(null);
@@ -1083,13 +1155,13 @@ function TabFacturacion({ data, persist, crearContacto, registrarVenta, draft, c
       )}
       {showForm && (
         <Modal title="Nueva venta" onClose={() => { setShowForm(false); clearDraft(); }} wide>
-          <VentaForm draft={draft} contactos={contactos} productos={productos} unidades={unidades} crearContacto={crearContacto} onSave={save} dolarVenta={dolarVenta} />
+          <VentaForm draft={draft} contactos={contactos} productos={productos} unidades={unidades} crearContacto={crearContacto} onSave={save} dolarVenta={dolarVenta} categorias={categorias} />
         </Modal>
       )}
     </div>
   );
 }
-function VentaForm({ draft, contactos, productos, unidades, crearContacto, onSave, dolarVenta }) {
+function VentaForm({ draft, contactos, productos, unidades, crearContacto, onSave, dolarVenta, categorias: categoriasFacturacion }) {
   const [tipoComprobante, setTipoComprobante] = useState(draft?.tipoComprobante || "factura");
   const [contactoId, setContactoId] = useState(draft?.contactoId || null);
   const [condicionIva, setCondicionIva] = useState("consumidor_final");
@@ -1103,7 +1175,7 @@ function VentaForm({ draft, contactos, productos, unidades, crearContacto, onSav
 
   function pickProducto(itemId, productId) {
     const p = productos.find((p) => p.id === productId);
-    updateItem(itemId, { productId, unidadId: "", descripcion: p?.nombre || "", precioUnitario: p ? precioVentaDe(p, dolarVenta).toFixed(2) : "" });
+    updateItem(itemId, { productId, unidadId: "", descripcion: p?.nombre || "", precioUnitario: p ? precioVentaDe(p, dolarVenta, categoriasFacturacion).toFixed(2) : "" });
   }
   function pickUnidad(itemId, unidadId) {
     const item = items.find((it) => it.id === itemId);
@@ -1149,10 +1221,18 @@ function VentaForm({ draft, contactos, productos, unidades, crearContacto, onSav
                     <option value="">Elegir producto…</option>
                     {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
-                  <select style={{ ...inputStyle, flex: 1 }} value={it.unidadId} onChange={(e) => pickUnidad(it.id, e.target.value)} disabled={!it.productId}>
-                    <option value="">N° de serie…</option>
-                    {unidades.filter((u) => u.productId === it.productId && u.estado === "disponible").map((u) => <option key={u.id} value={u.id}>{u.numeroSerie}</option>)}
-                  </select>
+                  {(() => {
+                    const prodSel = productos.find((p) => p.id === it.productId);
+                    if (prodSel && prodSel.controlSerie === false) {
+                      return <div style={{ ...inputStyle, flex: 1, background: "#F0EEE9", color: "#6B6560", display: "flex", alignItems: "center" }}>Stock disponible: {prodSel.cantidadStock || 0}</div>;
+                    }
+                    return (
+                      <select style={{ ...inputStyle, flex: 1 }} value={it.unidadId} onChange={(e) => pickUnidad(it.id, e.target.value)} disabled={!it.productId}>
+                        <option value="">N° de serie…</option>
+                        {unidades.filter((u) => u.productId === it.productId && u.estado === "disponible").map((u) => <option key={u.id} value={u.id}>{u.numeroSerie}</option>)}
+                      </select>
+                    );
+                  })()}
                 </div>
               ) : (
                 <input style={{ ...inputStyle, marginBottom: 6 }} value={it.descripcion} onChange={(e) => updateItem(it.id, { descripcion: e.target.value })} placeholder="Descripción (ej: reparación, servicio, producto libre)" />
@@ -1196,7 +1276,7 @@ function PrintArea({ payload }) {
         <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #1C1D1F", paddingBottom: 8, marginBottom: 14 }}><h1 style={{ fontSize: 18, margin: 0 }}>Listado de stock</h1><span style={{ fontSize: 12, color: "#6B6560" }}>{fmtDate(todayISO())} · Dólar oficial venta: {fmtMoney(dolarVenta)}</span></div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead><tr style={{ borderBottom: "1px solid #1C1D1F" }}><th style={{ textAlign: "left", padding: "6px 4px" }}>Producto</th><th style={{ textAlign: "left", padding: "6px 4px" }}>Categoría</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Costo U$D</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Precio venta</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Unidades</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Disponibles</th></tr></thead>
-          <tbody>{productos.map((p) => { const us = unidades.filter((u) => u.productId === p.id); const disp = us.filter((u) => u.estado === "disponible").length; const catNombre = categorias?.find((c) => c.id === p.categoriaId)?.nombre; return <tr key={p.id} style={{ borderBottom: "1px solid #E4E2DD" }}><td style={{ padding: "6px 4px" }}>{p.nombre}</td><td style={{ padding: "6px 4px" }}>{catNombre || "—"}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>U$D {p.costoUSD || 0}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(precioVentaDe(p, dolarVenta))}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{us.length}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{disp}</td></tr>; })}</tbody>
+          <tbody>{productos.map((p) => { const us = unidades.filter((u) => u.productId === p.id); const disp = us.filter((u) => u.estado === "disponible").length; const catNombre = categorias?.find((c) => c.id === p.categoriaId)?.nombre; const esCantidad = p.controlSerie === false; return <tr key={p.id} style={{ borderBottom: "1px solid #E4E2DD" }}><td style={{ padding: "6px 4px" }}>{p.nombre}</td><td style={{ padding: "6px 4px" }}>{catNombre || "—"}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>U$D {p.costoUSD || 0}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(precioVentaDe(p, dolarVenta, categorias))}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{esCantidad ? "—" : us.length}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{esCantidad ? p.cantidadStock || 0 : disp}</td></tr>; })}</tbody>
         </table>
       </div>
     );
