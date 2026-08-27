@@ -3,7 +3,7 @@ import {
   Package, Wrench, Users, Receipt, Building2, Search, Plus, X, Trash2, Pencil,
   Calendar, Phone, Mail, MapPin, CreditCard, Printer, Tag, ChevronDown, ChevronRight,
   ChevronLeft, AlertCircle, CircleDot, AlertTriangle, FileText, CheckCircle2, Clock,
-  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, LogOut, Mail as MailIcon, Lock,
+  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, LogOut, Mail as MailIcon, Lock, RefreshCw,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -23,6 +23,19 @@ function diffDias(iso) {
   const hoy = new Date(todayISO());
   const f = new Date(iso);
   return Math.round((f - hoy) / 86400000);
+}
+async function fetchDolarOficial() {
+  try {
+    const res = await fetch("https://dolarapi.com/v1/dolares/oficial");
+    const json = await res.json();
+    if (json && json.venta) return { valor: json.venta, fecha: json.fechaActualizacion || todayISO() };
+  } catch (e) {}
+  return null;
+}
+function precioVentaDe(producto, dolarVenta) {
+  const costo = Number(producto?.costoUSD) || 0;
+  const margen = Number(producto?.margen) || 0;
+  return costo * (Number(dolarVenta) || 0) * (1 + margen / 100);
 }
 
 const ESTADOS_UNIDAD = [
@@ -48,7 +61,7 @@ const CONDICIONES_IVA = [
 ];
 
 const STORAGE_KEY = "sistema-integrado-v1";
-const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [] };
+const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null };
 
 const TABS = [
   { id: "stock", label: "Stock", icon: Package, accent: "#0F6B5C" },
@@ -159,6 +172,49 @@ function ClienteSelector({ contactos, value, onChange, onCreateContacto }) {
   );
 }
 
+// Selector de categorías con alta rápida (usado en el formulario de productos)
+function CategoriaSelector({ categorias, value, onChange, onCreateCategoria }) {
+  const [showNew, setShowNew] = useState(false);
+  const [nombre, setNombre] = useState("");
+
+  if (showNew) {
+    return (
+      <div style={{ display: "flex", gap: 6 }}>
+        <input autoFocus style={inputStyle} placeholder="Nombre de la categoría" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+        <button type="button" onClick={() => {
+          if (!nombre.trim()) return;
+          const c = onCreateCategoria(nombre.trim());
+          onChange(c.id);
+          setNombre("");
+          setShowNew(false);
+        }} style={{ background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 8, padding: "0 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Crear</button>
+        <button type="button" onClick={() => setShowNew(false)} style={{ background: "none", border: "1px solid #E4E2DD", borderRadius: 8, padding: "0 10px", fontSize: 13, cursor: "pointer" }}>×</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", gap: 6 }}>
+      <select style={{ ...inputStyle, flex: 1 }} value={value || ""} onChange={(e) => onChange(e.target.value || null)}>
+        <option value="">Sin categoría</option>
+        {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+      </select>
+      <button type="button" onClick={() => setShowNew(true)} style={{ display: "flex", alignItems: "center", gap: 4, background: "#EEF5F3", color: "#0F6B5C", border: "1px solid #CFE3DD", borderRadius: 8, padding: "0 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}><Plus size={12} /> Nueva</button>
+    </div>
+  );
+}
+
+function DolarEditor({ valorInicial, onGuardar, onCancelar }) {
+  const [valor, setValor] = useState(valorInicial || "");
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.08)", borderRadius: 999, padding: "4px 10px" }}>
+      <span style={{ color: "#8C8880", fontSize: 11.5 }}>Dólar $</span>
+      <input autoFocus type="number" value={valor} onChange={(e) => setValor(e.target.value)} style={{ width: 70, background: "none", border: "none", borderBottom: "1px solid #6B6560", color: "#fff", fontSize: 13, outline: "none" }} />
+      <button onClick={() => onGuardar(Number(valor) || 0)} style={{ background: "none", border: "none", color: "#0F6B5C", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>OK</button>
+      <button onClick={onCancelar} style={{ background: "none", border: "none", color: "#B7B3AC", cursor: "pointer", fontSize: 12 }}>×</button>
+    </div>
+  );
+}
+
 // ---------- Autenticación ----------
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -233,6 +289,27 @@ function SistemaIntegrado({ session }) {
     setSaveError(!!error);
   }
 
+  const [dolarLoading, setDolarLoading] = useState(false);
+  const [editandoDolar, setEditandoDolar] = useState(false);
+
+  async function actualizarDolar(dataActual) {
+    setDolarLoading(true);
+    const r = await fetchDolarOficial();
+    setDolarLoading(false);
+    if (r) persist({ ...dataActual, dolarVenta: r.valor, dolarFecha: r.fecha });
+  }
+
+  useEffect(() => {
+    if (!loading && !data.dolarVenta) actualizarDolar(data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  function crearCategoria(nombre) {
+    const c = { id: uid(), nombre };
+    persist({ categorias: [...data.categorias, c] });
+    return c;
+  }
+
   function crearContacto(fields) {
     const c = { id: uid(), ...fields };
     persist({ contactos: [...data.contactos, c] });
@@ -294,6 +371,8 @@ function SistemaIntegrado({ session }) {
         .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
         input, select { font-family: inherit; }
         ::placeholder { color: #A7A29A; }
+        .spin { animation: spin 0.8s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @media print {
           body * { visibility: hidden; }
           #print-area, #print-area * { visibility: visible; }
@@ -311,6 +390,20 @@ function SistemaIntegrado({ session }) {
             <div className="sg" style={{ color: "#fff", fontSize: 17, fontWeight: 700, letterSpacing: -0.3 }}>Sistema de gestión</div>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               {saveError && <div style={{ color: "#E5A15E", fontSize: 12 }}>No se pudo guardar</div>}
+              {editandoDolar ? (
+                <DolarEditor
+                  valorInicial={data.dolarVenta}
+                  onCancelar={() => setEditandoDolar(false)}
+                  onGuardar={(v) => { persist({ dolarVenta: v, dolarFecha: todayISO() }); setEditandoDolar(false); }}
+                />
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.08)", borderRadius: 999, padding: "5px 12px" }}>
+                  <span style={{ color: "#8C8880", fontSize: 11.5 }}>Dólar oficial venta</span>
+                  <span className="sg" style={{ color: "#fff", fontSize: 13.5, fontWeight: 700 }}>{data.dolarVenta ? fmtMoney(data.dolarVenta) : "—"}</span>
+                  <button onClick={() => actualizarDolar(data)} disabled={dolarLoading} title="Actualizar" style={{ background: "none", border: "none", color: "#B7B3AC", cursor: "pointer", display: "flex" }}><RefreshCw size={12} className={dolarLoading ? "spin" : ""} /></button>
+                  <button onClick={() => setEditandoDolar(true)} title="Editar manualmente" style={{ background: "none", border: "none", color: "#B7B3AC", cursor: "pointer", display: "flex" }}><Pencil size={12} /></button>
+                </div>
+              )}
               <span style={{ color: "#8C8880", fontSize: 12 }}>{session?.user?.email}</span>
               <button onClick={() => supabase.auth.signOut()} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "1px solid #3A3B3D", color: "#B7B3AC", borderRadius: 8, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}><LogOut size={13} /> Salir</button>
             </div>
@@ -337,7 +430,7 @@ function SistemaIntegrado({ session }) {
         {loading ? (
           <div style={{ textAlign: "center", padding: 40, color: "#A7A29A" }}>Cargando…</div>
         ) : tab === "stock" ? (
-          <TabStock data={data} persist={persist} imprimir={imprimir} />
+          <TabStock data={data} persist={persist} imprimir={imprimir} crearCategoria={crearCategoria} />
         ) : tab === "reparaciones" ? (
           <TabReparaciones data={data} persist={persist} crearContacto={crearContacto} irAFacturar={irAFacturarDesdeOrden} imprimir={imprimir} />
         ) : tab === "agenda" ? (
@@ -351,8 +444,8 @@ function SistemaIntegrado({ session }) {
 }
 
 // ---------- TAB: STOCK ----------
-function TabStock({ data, persist, imprimir }) {
-  const { productos, unidades } = data;
+function TabStock({ data, persist, imprimir, crearCategoria }) {
+  const { productos, unidades, categorias, dolarVenta } = data;
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState({});
   const [showProductForm, setShowProductForm] = useState(false);
@@ -378,7 +471,8 @@ function TabStock({ data, persist, imprimir }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return productos;
-    return productos.filter((p) => p.nombre.toLowerCase().includes(q) || (p.categoria || "").toLowerCase().includes(q) || unidades.some((u) => u.productId === p.id && u.numeroSerie.toLowerCase().includes(q)));
+    const catNombre = (p) => categorias.find((c) => c.id === p.categoriaId)?.nombre || "";
+    return productos.filter((p) => p.nombre.toLowerCase().includes(q) || catNombre(p).toLowerCase().includes(q) || unidades.some((u) => u.productId === p.id && u.numeroSerie.toLowerCase().includes(q)));
   }, [productos, unidades, query]);
 
   const stats = useMemo(() => {
@@ -399,7 +493,7 @@ function TabStock({ data, persist, imprimir }) {
           <Search size={16} style={{ position: "absolute", left: 12, top: 12, color: "#A7A29A" }} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por producto, categoría o número de serie…" style={{ width: "100%", padding: "10px 12px 10px 36px", borderRadius: 10, border: "1px solid #E4E2DD", background: "#fff", fontSize: 14, boxSizing: "border-box" }} />
         </div>
-        <button onClick={() => imprimir({ tipo: "inventario", productos: filtered, unidades })} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Printer size={15} /> Imprimir</button>
+        <button onClick={() => imprimir({ tipo: "inventario", productos: filtered, unidades, categorias, dolarVenta })} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Printer size={15} /> Imprimir</button>
         <button onClick={() => { setEditingProduct(null); setShowProductForm(true); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 10, padding: "0 16px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Plus size={16} /> Producto</button>
       </div>
 
@@ -421,11 +515,14 @@ function TabStock({ data, persist, imprimir }) {
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span className="sg" style={{ fontWeight: 600, fontSize: 15 }}>{p.nombre}</span>
-                      {p.categoria && <span style={{ fontSize: 11, color: "#6B6560", background: "#F0EEE9", padding: "2px 8px", borderRadius: 999, display: "flex", alignItems: "center", gap: 4 }}><Tag size={10} /> {p.categoria}</span>}
+                      {p.categoriaId && categorias.find((c) => c.id === p.categoriaId) && <span style={{ fontSize: 11, color: "#6B6560", background: "#F0EEE9", padding: "2px 8px", borderRadius: 999, display: "flex", alignItems: "center", gap: 4 }}><Tag size={10} /> {categorias.find((c) => c.id === p.categoriaId).nombre}</span>}
                     </div>
-                    <div style={{ fontSize: 12, color: "#8C8880", marginTop: 2 }}>{us.length} unidad{us.length !== 1 ? "es" : ""} · {disp} disponible{disp !== 1 ? "s" : ""}</div>
+                    <div style={{ fontSize: 12, color: "#8C8880", marginTop: 2 }}>{us.length} unidad{us.length !== 1 ? "es" : ""} · {disp} disponible{disp !== 1 ? "s" : ""} · costo U$D {p.costoUSD || 0} · margen {p.margen || 0}%</div>
                   </div>
-                  <div className="sg" style={{ fontSize: 15, fontWeight: 700 }}>{fmtMoney(p.precio)}</div>
+                  <div style={{ textAlign: "right" }}>
+                    <div className="sg" style={{ fontSize: 15, fontWeight: 700 }}>{fmtMoney(precioVentaDe(p, dolarVenta))}</div>
+                    <div style={{ fontSize: 10.5, color: "#A7A29A" }}>precio de venta</div>
+                  </div>
                   <button onClick={(e) => { e.stopPropagation(); setEditingProduct(p); setShowProductForm(true); }} style={{ background: "none", border: "none", color: "#A7A29A", cursor: "pointer", padding: 6 }}><Pencil size={15} /></button>
                   <button onClick={(e) => { e.stopPropagation(); if (confirm(`¿Eliminar "${p.nombre}"?`)) deleteProduct(p.id); }} style={{ background: "none", border: "none", color: "#C97B7B", cursor: "pointer", padding: 6 }}><Trash2 size={15} /></button>
                 </div>
@@ -459,7 +556,7 @@ function TabStock({ data, persist, imprimir }) {
 
       {showProductForm && (
         <Modal title={editingProduct ? "Editar producto" : "Nuevo producto"} onClose={() => { setShowProductForm(false); setEditingProduct(null); }}>
-          <ProductForm initial={editingProduct} onSave={saveProduct} />
+          <ProductForm initial={editingProduct} onSave={saveProduct} categorias={categorias} crearCategoria={crearCategoria} dolarVenta={dolarVenta} />
         </Modal>
       )}
       {unitFormFor && (
@@ -470,16 +567,30 @@ function TabStock({ data, persist, imprimir }) {
     </div>
   );
 }
-function ProductForm({ initial, onSave }) {
+function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta }) {
   const [nombre, setNombre] = useState(initial?.nombre || "");
-  const [categoria, setCategoria] = useState(initial?.categoria || "");
-  const [precio, setPrecio] = useState(initial?.precio || "");
+  const [categoriaId, setCategoriaId] = useState(initial?.categoriaId || null);
+  const [costoUSD, setCostoUSD] = useState(initial?.costoUSD ?? "");
+  const [margen, setMargen] = useState(initial?.margen ?? "30");
   const [descripcion, setDescripcion] = useState(initial?.descripcion || "");
+
+  const precioVenta = (Number(costoUSD) || 0) * (Number(dolarVenta) || 0) * (1 + (Number(margen) || 0) / 100);
+
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (!nombre.trim()) return; onSave({ nombre: nombre.trim(), categoria: categoria.trim(), precio: Number(precio) || 0, descripcion: descripcion.trim() }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (!nombre.trim()) return; onSave({ nombre: nombre.trim(), categoriaId, costoUSD: Number(costoUSD) || 0, margen: Number(margen) || 0, descripcion: descripcion.trim() }); }}>
       <Field label="Nombre del producto"><input autoFocus style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} /></Field>
-      <Field label="Categoría"><input style={inputStyle} value={categoria} onChange={(e) => setCategoria(e.target.value)} /></Field>
-      <Field label="Precio de venta"><input style={inputStyle} type="number" value={precio} onChange={(e) => setPrecio(e.target.value)} /></Field>
+      <Field label="Categoría"><CategoriaSelector categorias={categorias} value={categoriaId} onChange={setCategoriaId} onCreateCategoria={crearCategoria} /></Field>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <Field label="Costo (U$D)"><input style={inputStyle} type="number" value={costoUSD} onChange={(e) => setCostoUSD(e.target.value)} placeholder="0" /></Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="Margen de ganancia (%)"><input style={inputStyle} type="number" value={margen} onChange={(e) => setMargen(e.target.value)} placeholder="30" /></Field>
+        </div>
+      </div>
+      <div style={{ background: "#FAFAF8", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13 }}>
+        Precio de venta (con dólar a {fmtMoney(dolarVenta)}): <strong className="sg">{fmtMoney(precioVenta)}</strong>
+      </div>
       <Field label="Descripción (opcional)"><textarea style={{ ...inputStyle, minHeight: 60 }} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} /></Field>
       <button type="submit" style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{initial ? "Guardar cambios" : "Crear producto"}</button>
     </form>
@@ -882,7 +993,7 @@ function ServForm({ onSave }) {
 
 // ---------- TAB: FACTURACIÓN ----------
 function TabFacturacion({ data, persist, crearContacto, registrarVenta, draft, clearDraft, imprimir }) {
-  const { ventas, contactos, productos, unidades } = data;
+  const { ventas, contactos, productos, unidades, dolarVenta } = data;
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(!!draft);
   const [viewingId, setViewingId] = useState(null);
@@ -972,13 +1083,13 @@ function TabFacturacion({ data, persist, crearContacto, registrarVenta, draft, c
       )}
       {showForm && (
         <Modal title="Nueva venta" onClose={() => { setShowForm(false); clearDraft(); }} wide>
-          <VentaForm draft={draft} contactos={contactos} productos={productos} unidades={unidades} crearContacto={crearContacto} onSave={save} />
+          <VentaForm draft={draft} contactos={contactos} productos={productos} unidades={unidades} crearContacto={crearContacto} onSave={save} dolarVenta={dolarVenta} />
         </Modal>
       )}
     </div>
   );
 }
-function VentaForm({ draft, contactos, productos, unidades, crearContacto, onSave }) {
+function VentaForm({ draft, contactos, productos, unidades, crearContacto, onSave, dolarVenta }) {
   const [tipoComprobante, setTipoComprobante] = useState(draft?.tipoComprobante || "factura");
   const [contactoId, setContactoId] = useState(draft?.contactoId || null);
   const [condicionIva, setCondicionIva] = useState("consumidor_final");
@@ -992,7 +1103,7 @@ function VentaForm({ draft, contactos, productos, unidades, crearContacto, onSav
 
   function pickProducto(itemId, productId) {
     const p = productos.find((p) => p.id === productId);
-    updateItem(itemId, { productId, unidadId: "", descripcion: p?.nombre || "", precioUnitario: p?.precio || "" });
+    updateItem(itemId, { productId, unidadId: "", descripcion: p?.nombre || "", precioUnitario: p ? precioVentaDe(p, dolarVenta).toFixed(2) : "" });
   }
   function pickUnidad(itemId, unidadId) {
     const item = items.find((it) => it.id === itemId);
@@ -1079,13 +1190,13 @@ function VentaForm({ draft, contactos, productos, unidades, crearContacto, onSav
 function PrintArea({ payload }) {
   if (!payload) return null;
   if (payload.tipo === "inventario") {
-    const { productos, unidades } = payload;
+    const { productos, unidades, categorias, dolarVenta } = payload;
     return (
       <div style={{ fontFamily: "Inter, system-ui, sans-serif", color: "#1C1D1F" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #1C1D1F", paddingBottom: 8, marginBottom: 14 }}><h1 style={{ fontSize: 18, margin: 0 }}>Listado de stock</h1><span style={{ fontSize: 12, color: "#6B6560" }}>{fmtDate(todayISO())}</span></div>
+        <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #1C1D1F", paddingBottom: 8, marginBottom: 14 }}><h1 style={{ fontSize: 18, margin: 0 }}>Listado de stock</h1><span style={{ fontSize: 12, color: "#6B6560" }}>{fmtDate(todayISO())} · Dólar oficial venta: {fmtMoney(dolarVenta)}</span></div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead><tr style={{ borderBottom: "1px solid #1C1D1F" }}><th style={{ textAlign: "left", padding: "6px 4px" }}>Producto</th><th style={{ textAlign: "left", padding: "6px 4px" }}>Categoría</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Precio</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Unidades</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Disponibles</th></tr></thead>
-          <tbody>{productos.map((p) => { const us = unidades.filter((u) => u.productId === p.id); const disp = us.filter((u) => u.estado === "disponible").length; return <tr key={p.id} style={{ borderBottom: "1px solid #E4E2DD" }}><td style={{ padding: "6px 4px" }}>{p.nombre}</td><td style={{ padding: "6px 4px" }}>{p.categoria || "—"}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(p.precio)}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{us.length}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{disp}</td></tr>; })}</tbody>
+          <thead><tr style={{ borderBottom: "1px solid #1C1D1F" }}><th style={{ textAlign: "left", padding: "6px 4px" }}>Producto</th><th style={{ textAlign: "left", padding: "6px 4px" }}>Categoría</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Costo U$D</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Precio venta</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Unidades</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Disponibles</th></tr></thead>
+          <tbody>{productos.map((p) => { const us = unidades.filter((u) => u.productId === p.id); const disp = us.filter((u) => u.estado === "disponible").length; const catNombre = categorias?.find((c) => c.id === p.categoriaId)?.nombre; return <tr key={p.id} style={{ borderBottom: "1px solid #E4E2DD" }}><td style={{ padding: "6px 4px" }}>{p.nombre}</td><td style={{ padding: "6px 4px" }}>{catNombre || "—"}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>U$D {p.costoUSD || 0}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(precioVentaDe(p, dolarVenta))}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{us.length}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{disp}</td></tr>; })}</tbody>
         </table>
       </div>
     );
