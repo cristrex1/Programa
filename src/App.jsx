@@ -692,9 +692,17 @@ function TabReparaciones({ data, persist, crearContacto, irAFacturar, imprimir }
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
+  function siguienteNumeroOrden() {
+    const max = ordenes.reduce((acc, o) => {
+      const n = parseInt((o.numero || "").replace(/\D/g, ""), 10);
+      return Number.isFinite(n) && n > acc ? n : acc;
+    }, 0);
+    return `OR-${String(max + 1).padStart(5, "0")}`;
+  }
+
   function save(fields) {
     if (editing) persist({ ordenes: ordenes.map((o) => (o.id === editing.id ? { ...o, ...fields } : o)) });
-    else persist({ ordenes: [...ordenes, { id: uid(), estado: "reparacion", ventaId: null, ...fields }] });
+    else persist({ ordenes: [...ordenes, { id: uid(), numero: siguienteNumeroOrden(), estado: "reparacion", ventaId: null, ...fields }] });
     setShowForm(false); setEditing(null);
   }
   function remove(id) { persist({ ordenes: ordenes.filter((o) => o.id !== id) }); }
@@ -708,7 +716,7 @@ function TabReparaciones({ data, persist, crearContacto, irAFacturar, imprimir }
       if (filtroEstado !== "todos" && o.estado !== filtroEstado) return false;
       const contacto = contactos.find((c) => c.id === o.contactoId);
       if (!q) return true;
-      return (contacto?.nombre || "").toLowerCase().includes(q) || o.producto.toLowerCase().includes(q) || o.numeroSerie.toLowerCase().includes(q);
+      return (contacto?.nombre || "").toLowerCase().includes(q) || o.producto.toLowerCase().includes(q) || o.numeroSerie.toLowerCase().includes(q) || (o.numero || "").toLowerCase().includes(q);
     });
   }, [ordenes, contactos, query, filtroEstado]);
 
@@ -747,6 +755,7 @@ function TabReparaciones({ data, persist, crearContacto, irAFacturar, imprimir }
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span className="mono" style={{ fontSize: 11.5, color: "#6B6560", background: "#F0EEE9", padding: "2px 8px", borderRadius: 999 }}>{o.numero || "—"}</span>
                       <User size={14} color="#6B6560" />
                       <span className="sg" style={{ fontWeight: 600, fontSize: 15 }}>{contacto?.nombre || "Cliente eliminado"}</span>
                       {contacto?.dniCuit && <span style={{ fontSize: 11.5, color: "#8C8880", display: "flex", alignItems: "center", gap: 3 }}><CreditCard size={11} /> {contacto.dniCuit}</span>}
@@ -1285,7 +1294,13 @@ function PrintArea({ payload }) {
     const { orden, contacto } = payload;
     return (
       <div style={{ fontFamily: "Inter, system-ui, sans-serif", color: "#1C1D1F" }}>
-        <div style={{ borderBottom: "2px solid #1C1D1F", paddingBottom: 8, marginBottom: 14 }}><h1 style={{ fontSize: 18, margin: 0 }}>Orden de reparación</h1><span style={{ fontSize: 12, color: "#6B6560" }}>Ingreso: {fmtDate(orden.fechaIngreso)}</span></div>
+        <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #1C1D1F", paddingBottom: 8, marginBottom: 14 }}>
+          <h1 style={{ fontSize: 18, margin: 0 }}>Orden de reparación</h1>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{orden.numero}</div>
+            <div style={{ fontSize: 12, color: "#6B6560" }}>Ingreso: {fmtDate(orden.fechaIngreso)}</div>
+          </div>
+        </div>
         <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
           <tbody>
             <tr><td style={{ padding: "4px 0", color: "#6B6560", width: 140 }}>Cliente</td><td style={{ padding: "4px 0" }}>{contacto?.nombre}</td></tr>
