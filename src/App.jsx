@@ -38,6 +38,27 @@ function precioVentaDe(producto, dolarVenta, categorias) {
   const margen = categoria ? (Number(categoria.margen) || 0) : (Number(producto?.margen) || 0);
   return costo * (Number(dolarVenta) || 0) * (1 + margen / 100);
 }
+// Agrupa ítems de una venta por descripción, apilando los N° de serie de cada uno (para factura/remito)
+function agruparItemsVenta(items) {
+  const grupos = [];
+  const mapa = {};
+  items.forEach((it) => {
+    if (it.numeroSerie) {
+      const key = `serie:${it.descripcion}`;
+      if (!mapa[key]) {
+        const g = { id: key, descripcion: it.descripcion, series: [], cantidad: 0, precioUnitario: it.precioUnitario, subtotal: 0 };
+        mapa[key] = g;
+        grupos.push(g);
+      }
+      mapa[key].series.push(it.numeroSerie);
+      mapa[key].cantidad += Number(it.cantidad) || 0;
+      mapa[key].subtotal += (Number(it.cantidad) || 0) * (Number(it.precioUnitario) || 0);
+    } else {
+      grupos.push({ id: it.id, descripcion: it.descripcion, series: [], cantidad: Number(it.cantidad) || 0, precioUnitario: it.precioUnitario, subtotal: (Number(it.cantidad) || 0) * (Number(it.precioUnitario) || 0) });
+    }
+  });
+  return grupos;
+}
 
 const ESTADOS_UNIDAD = [
   { value: "disponible", label: "Disponible", color: "#0F6B5C", bg: "#E7F2EF" },
@@ -1126,7 +1147,7 @@ function TabFacturacion({ data, persist, crearContacto, registrarVenta, draft, c
           {contacto?.dniCuit && <div style={{ fontSize: 13, color: "#6B6560", marginBottom: 10 }}>{contacto.dniCuit}</div>}
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead><tr style={{ borderBottom: "1px solid #E4E2DD" }}><th style={{ textAlign: "left", padding: "6px 4px", color: "#8C8880", fontWeight: 500 }}>Descripción</th><th style={{ textAlign: "right", padding: "6px 4px", color: "#8C8880", fontWeight: 500 }}>Cant.</th><th style={{ textAlign: "right", padding: "6px 4px", color: "#8C8880", fontWeight: 500 }}>P.Unit.</th><th style={{ textAlign: "right", padding: "6px 4px", color: "#8C8880", fontWeight: 500 }}>Subtotal</th></tr></thead>
-            <tbody>{viewing.items.map((it) => <tr key={it.id} style={{ borderBottom: "1px solid #EFEDE8" }}><td style={{ padding: "6px 4px" }}>{it.descripcion}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{it.cantidad}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(it.precioUnitario)}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney((Number(it.cantidad) || 0) * (Number(it.precioUnitario) || 0))}</td></tr>)}</tbody>
+            <tbody>{agruparItemsVenta(viewing.items).map((it) => <tr key={it.id} style={{ borderBottom: "1px solid #EFEDE8" }}><td style={{ padding: "6px 4px" }}><div>{it.descripcion}</div>{it.series.map((s) => <div key={s} style={{ fontSize: 10.5, color: "#8C8880" }}>N/S: {s}</div>)}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{it.cantidad}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(it.precioUnitario)}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(it.subtotal)}</td></tr>)}</tbody>
           </table>
           <div style={{ marginTop: 12, textAlign: "right" }}>
             {viewing.discriminarIva && <><div style={{ fontSize: 13, color: "#6B6560" }}>Subtotal: {fmtMoney(viewing.subtotal)}</div><div style={{ fontSize: 13, color: "#6B6560" }}>IVA 21%: {fmtMoney(viewing.iva)}</div></>}
@@ -1199,7 +1220,7 @@ function VentaForm({ draft, contactos, productos, unidades, crearContacto, onSav
     const item = items.find((it) => it.id === itemId);
     const p = productos.find((p) => p.id === item.productId);
     const u = unidades.find((u) => u.id === unidadId);
-    updateItem(itemId, { unidadId, descripcion: `${p?.nombre || ""} (${u?.numeroSerie || ""})` });
+    updateItem(itemId, { unidadId, numeroSerie: u?.numeroSerie || "", descripcion: p?.nombre || "" });
   }
 
   const subtotal = items.reduce((acc, it) => acc + (Number(it.cantidad) || 0) * (Number(it.precioUnitario) || 0), 0);
@@ -1348,7 +1369,7 @@ function PrintArea({ payload }) {
         <div style={{ fontSize: 13, marginBottom: 10 }}><strong>{contacto?.nombre}</strong>{contacto?.dniCuit ? ` · ${contacto.dniCuit}` : ""}</div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead><tr style={{ borderBottom: "1px solid #1C1D1F" }}><th style={{ textAlign: "left", padding: "6px 4px" }}>Descripción</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Cant.</th><th style={{ textAlign: "right", padding: "6px 4px" }}>P.Unit.</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Subtotal</th></tr></thead>
-          <tbody>{venta.items.map((it) => <tr key={it.id} style={{ borderBottom: "1px solid #E4E2DD" }}><td style={{ padding: "6px 4px" }}>{it.descripcion}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{it.cantidad}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(it.precioUnitario)}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney((Number(it.cantidad) || 0) * (Number(it.precioUnitario) || 0))}</td></tr>)}</tbody>
+          <tbody>{agruparItemsVenta(venta.items).map((it) => <tr key={it.id} style={{ borderBottom: "1px solid #E4E2DD" }}><td style={{ padding: "6px 4px" }}><div>{it.descripcion}</div>{it.series.map((s) => <div key={s} style={{ fontSize: 10.5, color: "#6B6560" }}>N/S: {s}</div>)}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{it.cantidad}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(it.precioUnitario)}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(it.subtotal)}</td></tr>)}</tbody>
         </table>
         <div style={{ marginTop: 12, textAlign: "right" }}>
           {venta.discriminarIva && <><div style={{ fontSize: 12 }}>Subtotal: {fmtMoney(venta.subtotal)}</div><div style={{ fontSize: 12 }}>IVA 21%: {fmtMoney(venta.iva)}</div></>}
