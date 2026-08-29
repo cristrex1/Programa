@@ -409,14 +409,15 @@ function SistemaIntegrado({ session }) {
         ::placeholder { color: #A7A29A; }
         .spin { animation: spin 0.8s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .print-area { position: absolute; left: -9999px; top: 0; width: 700px; }
         @media print {
           body * { visibility: hidden; }
-          #print-area, #print-area * { visibility: visible; }
-          #print-area { position: absolute; top: 0; left: 0; width: 100%; padding: 20px; }
+          .print-area, .print-area * { visibility: visible; }
+          .print-area { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; padding: 20px; }
           .no-print { display: none !important; }
         }
       `}</style>
-      <div id="print-area" style={{ position: "absolute", left: -9999, top: 0, width: 700 }}>
+      <div className="print-area">
         <PrintArea payload={printPayload} />
       </div>
 
