@@ -409,18 +409,17 @@ function SistemaIntegrado({ session }) {
         ::placeholder { color: #A7A29A; }
         .spin { animation: spin 0.8s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .print-area { position: absolute; left: -9999px; top: 0; width: 700px; }
+        .print-area { display: none; }
         @media print {
-          body * { visibility: hidden; }
-          .print-area, .print-area * { visibility: visible; }
-          .print-area { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; padding: 20px; }
-          .no-print { display: none !important; }
+          .app-shell { display: none !important; }
+          .print-area { display: block !important; padding: 20px; }
         }
       `}</style>
       <div className="print-area">
         <PrintArea payload={printPayload} />
       </div>
 
+      <div className="app-shell">
       <div className="no-print" style={{ background: "#1C1D1F", padding: "16px 24px" }}>
         <div style={{ maxWidth: 1000, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -475,6 +474,7 @@ function SistemaIntegrado({ session }) {
         ) : (
           <TabFacturacion data={data} persist={persist} crearContacto={crearContacto} registrarVenta={registrarVenta} draft={ventaDraft} clearDraft={() => setVentaDraft(null)} imprimir={imprimir} />
         )}
+      </div>
       </div>
     </div>
   );
