@@ -1127,7 +1127,6 @@ function TabFacturacion({ data, persist, crearContacto, registrarVenta, draft, c
     setShowForm(false);
     clearDraft();
     setViewingId(v.id);
-    imprimir(null);
   }
 
   if (viewing) {
