@@ -551,6 +551,7 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
                     <button onClick={() => persist({ productos: productos.map((x) => (x.id === p.id ? { ...x, cantidadStock: Math.max(0, (Number(x.cantidadStock) || 0) - 1) } : x)) })} style={{ background: "#F0EEE9", border: "none", borderRadius: 6, width: 24, height: 24, cursor: "pointer", fontWeight: 700 }}>−</button>
                     <span className="sg" style={{ fontWeight: 700, fontSize: 14, minWidth: 24, textAlign: "center" }}>{p.cantidadStock || 0}</span>
                     <button onClick={() => persist({ productos: productos.map((x) => (x.id === p.id ? { ...x, cantidadStock: (Number(x.cantidadStock) || 0) + 1 } : x)) })} style={{ background: "#F0EEE9", border: "none", borderRadius: 6, width: 24, height: 24, cursor: "pointer", fontWeight: 700 }}>+</button>
+                    {p.numeroSerieUnico && <span className="mono" style={{ fontSize: 12, background: "#FAFAF8", border: "1px dashed #D8D5CE", borderRadius: 6, padding: "3px 8px", marginLeft: 6 }}>{p.numeroSerieUnico}</span>}
                   </div>
                 ) : exp && (
                   <div style={{ borderTop: "1px solid #EFEDE8", padding: "10px 14px 14px" }}>
@@ -629,6 +630,7 @@ function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta }
   const [margenPropio, setMargenPropio] = useState(initial?.margen ?? "30");
   const [controlSerie, setControlSerie] = useState(initial?.controlSerie ?? true);
   const [cantidadStock, setCantidadStock] = useState(initial?.cantidadStock ?? "0");
+  const [numeroSerieUnico, setNumeroSerieUnico] = useState(initial?.numeroSerieUnico || "");
   const [descripcion, setDescripcion] = useState(initial?.descripcion || "");
 
   const categoria = categorias.find((c) => c.id === categoriaId);
@@ -636,7 +638,7 @@ function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta }
   const precioVenta = (Number(costoUSD) || 0) * (Number(dolarVenta) || 0) * (1 + margenEfectivo / 100);
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (!nombre.trim()) return; onSave({ nombre: nombre.trim(), categoriaId, costoUSD: Number(costoUSD) || 0, margen: categoria ? null : (Number(margenPropio) || 0), controlSerie, cantidadStock: controlSerie ? null : (Number(cantidadStock) || 0), descripcion: descripcion.trim() }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (!nombre.trim()) return; onSave({ nombre: nombre.trim(), categoriaId, costoUSD: Number(costoUSD) || 0, margen: categoria ? null : (Number(margenPropio) || 0), controlSerie, cantidadStock: controlSerie ? null : (Number(cantidadStock) || 0), numeroSerieUnico: controlSerie ? "" : numeroSerieUnico.trim(), descripcion: descripcion.trim() }); }}>
       <Field label="Nombre del producto"><input autoFocus style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} /></Field>
       <Field label="Categoría"><CategoriaSelector categorias={categorias} value={categoriaId} onChange={setCategoriaId} onCreateCategoria={crearCategoria} /></Field>
       <div style={{ display: "flex", gap: 10 }}>
@@ -661,7 +663,14 @@ function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta }
         </div>
       </Field>
       {!controlSerie && (
-        <Field label="Cantidad en stock"><input style={inputStyle} type="number" value={cantidadStock} onChange={(e) => setCantidadStock(e.target.value)} /></Field>
+        <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <Field label="Número de serie (opcional)"><input className="mono" style={inputStyle} value={numeroSerieUnico} onChange={(e) => setNumeroSerieUnico(e.target.value)} placeholder="Ej: LOTE-2026-04" /></Field>
+          </div>
+          <div style={{ flex: 1 }}>
+            <Field label="Cantidad en stock"><input style={inputStyle} type="number" value={cantidadStock} onChange={(e) => setCantidadStock(e.target.value)} /></Field>
+          </div>
+        </div>
       )}
       <Field label="Descripción (opcional)"><textarea style={{ ...inputStyle, minHeight: 60 }} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} /></Field>
       <button type="submit" style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{initial ? "Guardar cambios" : "Crear producto"}</button>
