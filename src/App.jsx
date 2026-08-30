@@ -3,7 +3,7 @@ import {
   Package, Wrench, Users, Receipt, Building2, Search, Plus, X, Trash2, Pencil,
   Calendar, Phone, Mail, MapPin, CreditCard, Printer, Tag, ChevronDown, ChevronRight,
   ChevronLeft, AlertCircle, CircleDot, AlertTriangle, FileText, CheckCircle2, Clock,
-  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, RefreshCw, LogOut, Mail as MailIcon, Lock,
+  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, RefreshCw, ImagePlus, ImageOff, LogOut, Mail as MailIcon, Lock,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -320,6 +320,16 @@ function SistemaIntegrado({ session }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
+  async function subirImagenProducto(file) {
+    if (file.size > 4 * 1024 * 1024) throw new Error("La imagen no puede pesar más de 4MB");
+    const ext = file.name.split(".").pop();
+    const path = `${uid()}.${ext}`;
+    const { error } = await supabase.storage.from("productos").upload(path, file, { upsert: true });
+    if (error) throw new Error("No se pudo subir la imagen");
+    const { data: pub } = supabase.storage.from("productos").getPublicUrl(path);
+    return pub.publicUrl;
+  }
+
   function crearCategoria(nombre, margen) {
     const c = { id: uid(), nombre, margen: Number(margen) || 0 };
     persist({ categorias: [...data.categorias, c] });
@@ -466,7 +476,7 @@ function SistemaIntegrado({ session }) {
         {loading ? (
           <div style={{ textAlign: "center", padding: 40, color: "#A7A29A" }}>Cargando…</div>
         ) : tab === "stock" ? (
-          <TabStock data={data} persist={persist} imprimir={imprimir} crearCategoria={crearCategoria} editarCategoria={editarCategoria} eliminarCategoria={eliminarCategoria} />
+          <TabStock data={data} persist={persist} imprimir={imprimir} crearCategoria={crearCategoria} editarCategoria={editarCategoria} eliminarCategoria={eliminarCategoria} subirImagen={subirImagenProducto} />
         ) : tab === "reparaciones" ? (
           <TabReparaciones data={data} persist={persist} crearContacto={crearContacto} irAFacturar={irAFacturarDesdeOrden} imprimir={imprimir} />
         ) : tab === "agenda" ? (
@@ -481,7 +491,7 @@ function SistemaIntegrado({ session }) {
 }
 
 // ---------- TAB: STOCK ----------
-function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, eliminarCategoria }) {
+function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, eliminarCategoria, subirImagen }) {
   const { productos, unidades, categorias, dolarVenta } = data;
   const [showCategorias, setShowCategorias] = useState(false);
   const [query, setQuery] = useState("");
@@ -551,6 +561,9 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
               <div key={p.id} style={{ background: "#fff", border: "1px solid #E4E2DD", borderRadius: 12, overflow: "hidden" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 14px", cursor: p.controlSerie === false ? "default" : "pointer" }} onClick={() => { if (p.controlSerie !== false) setExpanded((s) => ({ ...s, [p.id]: !s[p.id] })); }}>
                   {p.controlSerie === false ? <span style={{ width: 18 }} /> : <button style={{ background: "none", border: "none", cursor: "pointer", color: "#A7A29A", padding: 0 }}>{exp ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</button>}
+                  <div style={{ width: 38, height: 38, borderRadius: 8, background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                    {p.imagenUrl ? <img src={p.imagenUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageOff size={15} color="#C9C5BD" />}
+                  </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span className="sg" style={{ fontWeight: 600, fontSize: 15 }}>{p.nombre}</span>
@@ -605,7 +618,7 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
 
       {showProductForm && (
         <Modal title={editingProduct ? "Editar producto" : "Nuevo producto"} onClose={() => { setShowProductForm(false); setEditingProduct(null); }}>
-          <ProductForm initial={editingProduct} onSave={saveProduct} categorias={categorias} crearCategoria={crearCategoria} dolarVenta={dolarVenta} />
+          <ProductForm initial={editingProduct} onSave={saveProduct} categorias={categorias} crearCategoria={crearCategoria} dolarVenta={dolarVenta} subirImagen={subirImagen} />
         </Modal>
       )}
       {unitFormFor && (
@@ -645,7 +658,7 @@ function CategoriasModal({ categorias, onCrear, onEditar, onEliminar }) {
     </div>
   );
 }
-function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta }) {
+function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta, subirImagen }) {
   const [nombre, setNombre] = useState(initial?.nombre || "");
   const [categoriaId, setCategoriaId] = useState(initial?.categoriaId || null);
   const [costoUSD, setCostoUSD] = useState(initial?.costoUSD ?? "");
@@ -654,13 +667,45 @@ function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta }
   const [cantidadStock, setCantidadStock] = useState(initial?.cantidadStock ?? "0");
   const [numeroSerieUnico, setNumeroSerieUnico] = useState(initial?.numeroSerieUnico || "");
   const [descripcion, setDescripcion] = useState(initial?.descripcion || "");
+  const [imagenUrl, setImagenUrl] = useState(initial?.imagenUrl || "");
+  const [subiendoImagen, setSubiendoImagen] = useState(false);
+  const [errorImagen, setErrorImagen] = useState("");
+
+  async function onFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErrorImagen("");
+    setSubiendoImagen(true);
+    try {
+      const url = await subirImagen(file);
+      setImagenUrl(url);
+    } catch (err) {
+      setErrorImagen(err.message || "No se pudo subir la imagen");
+    }
+    setSubiendoImagen(false);
+  }
 
   const categoria = categorias.find((c) => c.id === categoriaId);
   const margenEfectivo = categoria ? (Number(categoria.margen) || 0) : (Number(margenPropio) || 0);
   const precioVenta = (Number(costoUSD) || 0) * (Number(dolarVenta) || 0) * (1 + margenEfectivo / 100);
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (!nombre.trim()) return; onSave({ nombre: nombre.trim(), categoriaId, costoUSD: Number(costoUSD) || 0, margen: categoria ? null : (Number(margenPropio) || 0), controlSerie, cantidadStock: controlSerie ? null : (Number(cantidadStock) || 0), numeroSerieUnico: controlSerie ? "" : numeroSerieUnico.trim(), descripcion: descripcion.trim() }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (!nombre.trim()) return; onSave({ nombre: nombre.trim(), categoriaId, costoUSD: Number(costoUSD) || 0, margen: categoria ? null : (Number(margenPropio) || 0), controlSerie, cantidadStock: controlSerie ? null : (Number(cantidadStock) || 0), numeroSerieUnico: controlSerie ? "" : numeroSerieUnico.trim(), imagenUrl, descripcion: descripcion.trim() }); }}>
+      <Field label="Foto del producto">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 10, background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+            {imagenUrl ? <img src={imagenUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageOff size={20} color="#A7A29A" />}
+          </div>
+          <div>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EEF5F3", color: "#0F6B5C", border: "1px solid #CFE3DD", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              <ImagePlus size={13} /> {subiendoImagen ? "Subiendo…" : imagenUrl ? "Cambiar foto" : "Elegir foto"}
+              <input type="file" accept="image/*" onChange={onFileChange} disabled={subiendoImagen} style={{ display: "none" }} />
+            </label>
+            {imagenUrl && <button type="button" onClick={() => setImagenUrl("")} style={{ marginLeft: 8, background: "none", border: "none", color: "#C97B7B", fontSize: 12.5, cursor: "pointer" }}>Quitar</button>}
+            {errorImagen && <div style={{ fontSize: 11.5, color: "#B23A3A", marginTop: 4 }}>{errorImagen}</div>}
+          </div>
+        </div>
+      </Field>
       <Field label="Nombre del producto"><input autoFocus style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} /></Field>
       <Field label="Categoría"><CategoriaSelector categorias={categorias} value={categoriaId} onChange={setCategoriaId} onCreateCategoria={crearCategoria} /></Field>
       <div style={{ display: "flex", gap: 10 }}>
