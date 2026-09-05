@@ -3,7 +3,7 @@ import {
   Package, Wrench, Users, Receipt, Building2, Search, Plus, X, Trash2, Pencil,
   Calendar, Phone, Mail, MapPin, CreditCard, Printer, Tag, ChevronDown, ChevronRight,
   ChevronLeft, AlertCircle, CircleDot, AlertTriangle, FileText, CheckCircle2, Clock,
-  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, RefreshCw, ImagePlus, ImageOff, LogOut, Mail as MailIcon, Lock,
+  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, RefreshCw, ImagePlus, ImageOff, LogOut, Mail as MailIcon, Lock, ShoppingCart, Package as PackageIcon,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -89,6 +89,7 @@ const TABS = [
   { id: "reparaciones", label: "Reparaciones", icon: Wrench, accent: "#C9822C" },
   { id: "agenda", label: "Agenda", icon: Users, accent: "#4A5FA8" },
   { id: "facturacion", label: "Facturación", icon: Receipt, accent: "#2E5F8A" },
+  { id: "pedidosweb", label: "Pedidos Web", icon: ShoppingCart, accent: "#8A5A17" },
 ];
 
 // ---------- Shared UI ----------
@@ -320,6 +321,11 @@ function SistemaIntegrado({ session }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
+  useEffect(() => {
+    if (!loading) sincronizarCatalogoPublico(data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
   async function subirImagenProducto(file) {
     if (file.size > 4 * 1024 * 1024) throw new Error("La imagen no puede pesar más de 4MB");
     const ext = file.name.split(".").pop();
@@ -347,6 +353,34 @@ function SistemaIntegrado({ session }) {
     setData(next);
     const { error } = await supabase.from("estado_sistema").upsert({ id: 1, data: next, updated_at: new Date().toISOString() });
     setSaveError(!!error);
+    if (patch.productos || patch.categorias || patch.unidades || patch.dolarVenta !== undefined) {
+      sincronizarCatalogoPublico(next);
+    }
+  }
+
+  async function sincronizarCatalogoPublico(d) {
+    const productosPublicos = (d.productos || []).map((p) => {
+      const esCantidad = p.controlSerie === false;
+      const cantidadDisponible = esCantidad
+        ? Number(p.cantidadStock) || 0
+        : (d.unidades || []).filter((u) => u.productId === p.id && u.estado === "disponible").length;
+      return {
+        id: p.id,
+        nombre: p.nombre,
+        categoriaId: p.categoriaId,
+        imagenUrl: p.imagenUrl || "",
+        descripcion: p.descripcion || "",
+        precio: precioVentaDe(p, d.dolarVenta, d.categorias),
+        disponible: cantidadDisponible > 0,
+        cantidadDisponible,
+      };
+    });
+    const categoriasPublicas = (d.categorias || []).map((c) => ({ id: c.id, nombre: c.nombre }));
+    await supabase.from("catalogo_publico").upsert({
+      id: 1,
+      data: { productos: productosPublicos, categorias: categoriasPublicas },
+      updated_at: new Date().toISOString(),
+    });
   }
 
   function crearContacto(fields) {
@@ -481,8 +515,10 @@ function SistemaIntegrado({ session }) {
           <TabReparaciones data={data} persist={persist} crearContacto={crearContacto} irAFacturar={irAFacturarDesdeOrden} imprimir={imprimir} />
         ) : tab === "agenda" ? (
           <TabAgenda data={data} persist={persist} deudaDe={deudaDe} imprimir={imprimir} />
-        ) : (
+        ) : tab === "facturacion" ? (
           <TabFacturacion data={data} persist={persist} crearContacto={crearContacto} registrarVenta={registrarVenta} draft={ventaDraft} clearDraft={() => setVentaDraft(null)} imprimir={imprimir} />
+        ) : (
+          <TabPedidosWeb />
         )}
       </div>
       </div>
@@ -1149,6 +1185,70 @@ function ServForm({ onSave }) {
 }
 
 // ---------- TAB: FACTURACIÓN ----------
+function TabPedidosWeb() {
+  const [pedidos, setPedidos] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  async function cargar() {
+    setLoading(true);
+    const { data } = await supabase.from("pedidos_web").select("*").order("created_at", { ascending: false });
+    setPedidos(data || []);
+    setLoading(false);
+  }
+
+  useEffect(() => { cargar(); }, []);
+
+  async function marcarEstado(id, estado) {
+    await supabase.from("pedidos_web").update({ estado }).eq("id", id);
+    setPedidos((ps) => ps.map((p) => (p.id === id ? { ...p, estado } : p)));
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div className="sg" style={{ fontSize: 15, fontWeight: 700 }}>Pedidos recibidos por la tienda</div>
+        <button onClick={cargar} style={{ display: "flex", alignItems: "center", gap: 5, background: "#fff", border: "1px solid #E4E2DD", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, cursor: "pointer" }}><RefreshCw size={13} /> Actualizar</button>
+      </div>
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 40, color: "#A7A29A" }}>Cargando…</div>
+      ) : pedidos.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "50px 20px", background: "#fff", border: "1px dashed #E4E2DD", borderRadius: 12 }}>
+          <ShoppingCart size={28} color="#A7A29A" style={{ marginBottom: 10 }} />
+          <div style={{ fontSize: 14, color: "#6B6560" }}>Todavía no llegó ningún pedido desde la tienda.</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {pedidos.map((p) => {
+            const d = p.data || {};
+            return (
+              <div key={p.id} style={{ background: "#fff", border: "1px solid #E4E2DD", borderRadius: 12, padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                  <div>
+                    <div className="sg" style={{ fontWeight: 600, fontSize: 14.5 }}>{d.cliente?.nombre || "Sin nombre"}</div>
+                    <div style={{ fontSize: 12, color: "#8C8880" }}>{d.cliente?.telefono || "sin teléfono"} · {new Date(p.created_at).toLocaleString("es-AR")}</div>
+                  </div>
+                  <select value={p.estado} onChange={(e) => marcarEstado(p.id, e.target.value)} style={{ fontSize: 12, borderRadius: 999, border: "1px solid #E4E2DD", padding: "4px 10px", background: p.estado === "nuevo" ? "#FBF0E1" : "#E7F2EF", color: p.estado === "nuevo" ? "#8A5A17" : "#0F6B5C", fontWeight: 600 }}>
+                    <option value="nuevo">Nuevo</option>
+                    <option value="atendido">Atendido</option>
+                  </select>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+                  {(d.items || []).map((it, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span>{it.cantidad} × {it.nombre}</span>
+                      <span>{fmtMoney(it.precio * it.cantidad)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ textAlign: "right", fontWeight: 700, fontSize: 14 }} className="sg">Total: {fmtMoney(d.total)}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 function TabFacturacion({ data, persist, crearContacto, registrarVenta, draft, clearDraft, imprimir }) {
   const { ventas, contactos, productos, unidades, dolarVenta, categorias } = data;
   const [query, setQuery] = useState("");
