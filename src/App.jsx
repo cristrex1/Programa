@@ -82,7 +82,7 @@ const CONDICIONES_IVA = [
   { value: "exento", label: "Exento", factura: "C" },
 ];
 
-const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null, tienda: { nombreNegocio: "", logoUrl: "", bannerUrl: "" } };
+const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null, tienda: { nombreNegocio: "", logoUrl: "", bannerUrls: [] } };
 
 const TABS = [
   { id: "stock", label: "Stock", icon: Package, accent: "#0F6B5C" },
@@ -680,7 +680,8 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
 function ConfiguracionTiendaModal({ tienda, subirImagen, onGuardar }) {
   const [nombreNegocio, setNombreNegocio] = useState(tienda?.nombreNegocio || "");
   const [logoUrl, setLogoUrl] = useState(tienda?.logoUrl || "");
-  const [bannerUrl, setBannerUrl] = useState(tienda?.bannerUrl || "");
+  const bannersIniciales = tienda?.bannerUrls?.length ? tienda.bannerUrls : (tienda?.bannerUrl ? [tienda.bannerUrl] : []);
+  const [bannerUrls, setBannerUrls] = useState([bannersIniciales[0] || "", bannersIniciales[1] || "", bannersIniciales[2] || ""]);
   const [subiendo, setSubiendo] = useState("");
   const [error, setError] = useState("");
 
@@ -694,6 +695,10 @@ function ConfiguracionTiendaModal({ tienda, subirImagen, onGuardar }) {
       setError(err.message || "No se pudo subir la imagen");
     }
     setSubiendo("");
+  }
+
+  function setBanner(i, url) {
+    setBannerUrls((arr) => arr.map((u, idx) => (idx === i ? url : u)));
   }
 
   return (
@@ -716,22 +721,24 @@ function ConfiguracionTiendaModal({ tienda, subirImagen, onGuardar }) {
           {logoUrl && <button type="button" onClick={() => setLogoUrl("")} style={{ background: "none", border: "none", color: "#C97B7B", fontSize: 12.5, cursor: "pointer" }}>Quitar</button>}
         </div>
       </Field>
-      <Field label="Banner (imagen ancha arriba del catálogo)">
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ width: "100%", height: 100, borderRadius: 10, background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-            {bannerUrl ? <img src={bannerUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageOff size={20} color="#A7A29A" />}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EEF5F3", color: "#0F6B5C", border: "1px solid #CFE3DD", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-              <ImagePlus size={13} /> {subiendo === "banner" ? "Subiendo…" : "Elegir banner"}
-              <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && subir(e.target.files[0], setBannerUrl, "banner")} disabled={!!subiendo} style={{ display: "none" }} />
-            </label>
-            {bannerUrl && <button type="button" onClick={() => setBannerUrl("")} style={{ background: "none", border: "none", color: "#C97B7B", fontSize: 12.5, cursor: "pointer" }}>Quitar</button>}
-          </div>
+      <Field label="Banner (hasta 3 imágenes, se muestran en fila arriba del catálogo)">
+        <div style={{ display: "flex", gap: 10 }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
+              <div style={{ width: "100%", height: 80, borderRadius: 10, background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                {bannerUrls[i] ? <img src={bannerUrls[i]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageOff size={18} color="#A7A29A" />}
+              </div>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#EEF5F3", color: "#0F6B5C", border: "1px solid #CFE3DD", borderRadius: 8, padding: "5px 8px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                <ImagePlus size={11} /> {subiendo === `banner${i}` ? "Subiendo…" : bannerUrls[i] ? "Cambiar" : "Elegir"}
+                <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && subir(e.target.files[0], (url) => setBanner(i, url), `banner${i}`)} disabled={!!subiendo} style={{ display: "none" }} />
+              </label>
+              {bannerUrls[i] && <button type="button" onClick={() => setBanner(i, "")} style={{ background: "none", border: "none", color: "#C97B7B", fontSize: 11, cursor: "pointer" }}>Quitar</button>}
+            </div>
+          ))}
         </div>
       </Field>
       {error && <div style={{ fontSize: 12, color: "#B23A3A", marginBottom: 10 }}>{error}</div>}
-      <button onClick={() => onGuardar({ nombreNegocio: nombreNegocio.trim(), logoUrl, bannerUrl })} style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Guardar</button>
+      <button onClick={() => onGuardar({ nombreNegocio: nombreNegocio.trim(), logoUrl, bannerUrls: bannerUrls.filter(Boolean) })} style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Guardar</button>
     </div>
   );
 }
