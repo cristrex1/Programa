@@ -82,7 +82,7 @@ const CONDICIONES_IVA = [
   { value: "exento", label: "Exento", factura: "C" },
 ];
 
-const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null, tienda: { nombreNegocio: "", logoUrl: "", bannerUrls: [] } };
+const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null, tienda: { nombreNegocio: "", logoUrl: "", bannerUrls: [], direccion: "", horario: "", telefono: "", email: "", instagram: "", facebookUrl: "", youtubeUrl: "" } };
 
 const TABS = [
   { id: "stock", label: "Stock", icon: Package, accent: "#0F6B5C" },
@@ -682,6 +682,13 @@ function ConfiguracionTiendaModal({ tienda, subirImagen, onGuardar }) {
   const [logoUrl, setLogoUrl] = useState(tienda?.logoUrl || "");
   const bannersIniciales = tienda?.bannerUrls?.length ? tienda.bannerUrls : (tienda?.bannerUrl ? [tienda.bannerUrl] : []);
   const [bannerUrls, setBannerUrls] = useState([bannersIniciales[0] || "", bannersIniciales[1] || "", bannersIniciales[2] || ""]);
+  const [direccion, setDireccion] = useState(tienda?.direccion || "");
+  const [horario, setHorario] = useState(tienda?.horario || "");
+  const [telefono, setTelefono] = useState(tienda?.telefono || "");
+  const [email, setEmail] = useState(tienda?.email || "");
+  const [instagram, setInstagram] = useState(tienda?.instagram || "");
+  const [facebookUrl, setFacebookUrl] = useState(tienda?.facebookUrl || "");
+  const [youtubeUrl, setYoutubeUrl] = useState(tienda?.youtubeUrl || "");
   const [subiendo, setSubiendo] = useState("");
   const [error, setError] = useState("");
 
@@ -737,8 +744,20 @@ function ConfiguracionTiendaModal({ tienda, subirImagen, onGuardar }) {
           ))}
         </div>
       </Field>
+      <div className="sg" style={{ fontSize: 13.5, fontWeight: 700, marginTop: 16, marginBottom: 8 }}>Pie de página</div>
+      <Field label="Dirección"><input style={inputStyle} value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Ej: Tomas Justo Villegas 26, Lomas del Mirador" /></Field>
+      <Field label="Horario de atención"><input style={inputStyle} value={horario} onChange={(e) => setHorario(e.target.value)} placeholder="Ej: Lunes a viernes de 9:30 a 19:00 hs. Sábados de 10 a 13 hs." /></Field>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}><Field label="Teléfono a mostrar"><input style={inputStyle} value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="11-6533-9721" /></Field></div>
+        <div style={{ flex: 1 }}><Field label="Email"><input style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tunegocio@hotmail.com" /></Field></div>
+      </div>
+      <Field label="Instagram (usuario, sin @)"><input style={inputStyle} value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="tunegocio" /></Field>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}><Field label="Facebook (link, opcional)"><input style={inputStyle} value={facebookUrl} onChange={(e) => setFacebookUrl(e.target.value)} placeholder="https://facebook.com/tunegocio" /></Field></div>
+        <div style={{ flex: 1 }}><Field label="YouTube (link, opcional)"><input style={inputStyle} value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://youtube.com/@tunegocio" /></Field></div>
+      </div>
       {error && <div style={{ fontSize: 12, color: "#B23A3A", marginBottom: 10 }}>{error}</div>}
-      <button onClick={() => onGuardar({ nombreNegocio: nombreNegocio.trim(), logoUrl, bannerUrls: bannerUrls.filter(Boolean) })} style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Guardar</button>
+      <button onClick={() => onGuardar({ nombreNegocio: nombreNegocio.trim(), logoUrl, bannerUrls: bannerUrls.filter(Boolean), direccion: direccion.trim(), horario: horario.trim(), telefono: telefono.trim(), email: email.trim(), instagram: instagram.trim(), facebookUrl: facebookUrl.trim(), youtubeUrl: youtubeUrl.trim() })} style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Guardar</button>
     </div>
   );
 }
