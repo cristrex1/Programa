@@ -3,7 +3,7 @@ import {
   Package, Wrench, Users, Receipt, Building2, Search, Plus, X, Trash2, Pencil,
   Calendar, Phone, Mail, MapPin, CreditCard, Printer, Tag, ChevronDown, ChevronRight,
   ChevronLeft, AlertCircle, CircleDot, AlertTriangle, FileText, CheckCircle2, Clock,
-  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, RefreshCw, ImagePlus, ImageOff, LogOut, Mail as MailIcon, Lock, ShoppingCart, Package as PackageIcon,
+  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, RefreshCw, ImagePlus, ImageOff, LogOut, Mail as MailIcon, Lock, ShoppingCart, Package as PackageIcon, Store,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -82,7 +82,7 @@ const CONDICIONES_IVA = [
   { value: "exento", label: "Exento", factura: "C" },
 ];
 
-const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null };
+const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null, tienda: { nombreNegocio: "", logoUrl: "", bannerUrl: "" } };
 
 const TABS = [
   { id: "stock", label: "Stock", icon: Package, accent: "#0F6B5C" },
@@ -353,7 +353,7 @@ function SistemaIntegrado({ session }) {
     setData(next);
     const { error } = await supabase.from("estado_sistema").upsert({ id: 1, data: next, updated_at: new Date().toISOString() });
     setSaveError(!!error);
-    if (patch.productos || patch.categorias || patch.unidades || patch.dolarVenta !== undefined) {
+    if (patch.productos || patch.categorias || patch.unidades || patch.dolarVenta !== undefined || patch.tienda) {
       sincronizarCatalogoPublico(next);
     }
   }
@@ -378,7 +378,7 @@ function SistemaIntegrado({ session }) {
     const categoriasPublicas = (d.categorias || []).map((c) => ({ id: c.id, nombre: c.nombre }));
     await supabase.from("catalogo_publico").upsert({
       id: 1,
-      data: { productos: productosPublicos, categorias: categoriasPublicas },
+      data: { productos: productosPublicos, categorias: categoriasPublicas, tienda: d.tienda || {} },
       updated_at: new Date().toISOString(),
     });
   }
@@ -528,8 +528,9 @@ function SistemaIntegrado({ session }) {
 
 // ---------- TAB: STOCK ----------
 function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, eliminarCategoria, subirImagen }) {
-  const { productos, unidades, categorias, dolarVenta } = data;
+  const { productos, unidades, categorias, dolarVenta, tienda } = data;
   const [showCategorias, setShowCategorias] = useState(false);
+  const [showTienda, setShowTienda] = useState(false);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState({});
   const [showProductForm, setShowProductForm] = useState(false);
@@ -579,6 +580,7 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
         </div>
         <button onClick={() => imprimir({ tipo: "inventario", productos: filtered, unidades, categorias, dolarVenta })} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Printer size={15} /> Imprimir</button>
         <button onClick={() => setShowCategorias(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Tag size={15} /> Categorías</button>
+        <button onClick={() => setShowTienda(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><ShoppingCart size={15} /> Tienda online</button>
         <button onClick={() => { setEditingProduct(null); setShowProductForm(true); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 10, padding: "0 16px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Plus size={16} /> Producto</button>
       </div>
 
@@ -667,6 +669,69 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
           <CategoriasModal categorias={categorias} onCrear={crearCategoria} onEditar={editarCategoria} onEliminar={eliminarCategoria} />
         </Modal>
       )}
+      {showTienda && (
+        <Modal title="Tienda online" onClose={() => setShowTienda(false)} wide>
+          <ConfiguracionTiendaModal tienda={tienda} subirImagen={subirImagen} onGuardar={(t) => { persist({ tienda: t }); setShowTienda(false); }} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+function ConfiguracionTiendaModal({ tienda, subirImagen, onGuardar }) {
+  const [nombreNegocio, setNombreNegocio] = useState(tienda?.nombreNegocio || "");
+  const [logoUrl, setLogoUrl] = useState(tienda?.logoUrl || "");
+  const [bannerUrl, setBannerUrl] = useState(tienda?.bannerUrl || "");
+  const [subiendo, setSubiendo] = useState("");
+  const [error, setError] = useState("");
+
+  async function subir(file, setter, campo) {
+    setError("");
+    setSubiendo(campo);
+    try {
+      const url = await subirImagen(file);
+      setter(url);
+    } catch (err) {
+      setError(err.message || "No se pudo subir la imagen");
+    }
+    setSubiendo("");
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, color: "#6B6560", background: "#FAFAF8", borderRadius: 8, padding: "8px 10px", marginBottom: 14 }}>
+        Esto controla cómo se ve la tienda online en <span className="mono">/tienda</span>.
+      </div>
+      <Field label="Nombre del negocio (se muestra si no cargás un logo)">
+        <input style={inputStyle} value={nombreNegocio} onChange={(e) => setNombreNegocio(e.target.value)} placeholder="Ej: T-Rex Computación" />
+      </Field>
+      <Field label="Logo">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 10, background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+            {logoUrl ? <img src={logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <Store size={20} color="#A7A29A" />}
+          </div>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EEF5F3", color: "#0F6B5C", border: "1px solid #CFE3DD", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            <ImagePlus size={13} /> {subiendo === "logo" ? "Subiendo…" : "Elegir logo"}
+            <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && subir(e.target.files[0], setLogoUrl, "logo")} disabled={!!subiendo} style={{ display: "none" }} />
+          </label>
+          {logoUrl && <button type="button" onClick={() => setLogoUrl("")} style={{ background: "none", border: "none", color: "#C97B7B", fontSize: 12.5, cursor: "pointer" }}>Quitar</button>}
+        </div>
+      </Field>
+      <Field label="Banner (imagen ancha arriba del catálogo)">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ width: "100%", height: 100, borderRadius: 10, background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+            {bannerUrl ? <img src={bannerUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageOff size={20} color="#A7A29A" />}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EEF5F3", color: "#0F6B5C", border: "1px solid #CFE3DD", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              <ImagePlus size={13} /> {subiendo === "banner" ? "Subiendo…" : "Elegir banner"}
+              <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && subir(e.target.files[0], setBannerUrl, "banner")} disabled={!!subiendo} style={{ display: "none" }} />
+            </label>
+            {bannerUrl && <button type="button" onClick={() => setBannerUrl("")} style={{ background: "none", border: "none", color: "#C97B7B", fontSize: 12.5, cursor: "pointer" }}>Quitar</button>}
+          </div>
+        </div>
+      </Field>
+      {error && <div style={{ fontSize: 12, color: "#B23A3A", marginBottom: 10 }}>{error}</div>}
+      <button onClick={() => onGuardar({ nombreNegocio: nombreNegocio.trim(), logoUrl, bannerUrl })} style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Guardar</button>
     </div>
   );
 }
