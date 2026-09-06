@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { ShoppingCart, Plus, Minus, X, Search, Package, CheckCircle2, MessageCircle } from "lucide-react";
+import { ShoppingCart, Plus, Minus, X, Search, Package, CheckCircle2, MessageCircle, MapPin, Clock, Phone, Mail, Instagram, Facebook, Youtube } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { jsPDF } from "jspdf";
 
@@ -231,6 +231,8 @@ export default function Tienda() {
         </div>
       </div>
 
+      <TiendaFooter tienda={catalogo.tienda} />
+
       {showCarrito && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(28,29,31,0.45)", display: "flex", justifyContent: "flex-end", zIndex: 50 }} onClick={() => setShowCarrito(false)}>
           <div style={{ background: "#fff", width: "100%", maxWidth: 380, height: "100%", padding: 20, overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
@@ -275,6 +277,45 @@ export default function Tienda() {
             <div className="sg" style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>¡Pedido recibido!</div>
             <div style={{ fontSize: 13.5, color: "#6B6560", marginBottom: 16 }}>Se descargó el PDF de tu pedido. Se abrió WhatsApp con el mensaje listo — solo confirmá el envío y, si querés, adjuntá el PDF descargado.</div>
             <button onClick={() => setPedidoConfirmado(false)} style={{ background: "#1C1D1F", color: "#fff", border: "none", borderRadius: 9, padding: "10px 20px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Listo</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TiendaFooter({ tienda }) {
+  if (!tienda) return null;
+  const tieneRedes = tienda.facebookUrl || tienda.youtubeUrl || tienda.instagram;
+  const tieneDatos = tienda.direccion || tienda.horario || tienda.telefono || tienda.email || tienda.instagram;
+  if (!tieneRedes && !tieneDatos) return null;
+
+  return (
+    <div style={{ marginTop: 30 }}>
+      <div style={{ background: "#fff", borderTop: "1px solid #E4E2DD", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          {tienda.logoUrl ? (
+            <img src={tienda.logoUrl} alt={tienda.nombreNegocio || ""} style={{ height: 36, objectFit: "contain" }} />
+          ) : (
+            <span className="sg" style={{ fontSize: 15, fontWeight: 700 }}>{tienda.nombreNegocio}</span>
+          )}
+        </div>
+        {tieneRedes && (
+          <div style={{ display: "flex", gap: 14 }}>
+            {tienda.facebookUrl && <a href={tienda.facebookUrl} target="_blank" rel="noreferrer" style={{ color: "#4A4642" }}><Facebook size={18} /></a>}
+            {tienda.youtubeUrl && <a href={tienda.youtubeUrl} target="_blank" rel="noreferrer" style={{ color: "#4A4642" }}><Youtube size={18} /></a>}
+            {tienda.instagram && <a href={`https://instagram.com/${tienda.instagram.replace(/^@/, "")}`} target="_blank" rel="noreferrer" style={{ color: "#4A4642" }}><Instagram size={18} /></a>}
+          </div>
+        )}
+      </div>
+      {tieneDatos && (
+        <div style={{ background: "#6B6560", color: "#fff", padding: "16px 24px" }}>
+          <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 8, fontSize: 13.5 }}>
+            {tienda.direccion && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><MapPin size={15} /> {tienda.direccion}</div>}
+            {tienda.horario && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Clock size={15} /> {tienda.horario}</div>}
+            {tienda.telefono && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Phone size={15} /> {tienda.telefono}</div>}
+            {tienda.email && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Mail size={15} /> {tienda.email}</div>}
+            {tienda.instagram && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Instagram size={15} /> {tienda.instagram}</div>}
           </div>
         </div>
       )}
