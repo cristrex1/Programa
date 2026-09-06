@@ -11,9 +11,10 @@ function fmtMoney(n) {
 const WHATSAPP_NUMERO = import.meta.env.VITE_WHATSAPP_NUMERO || "";
 
 export default function Tienda() {
-  const [catalogo, setCatalogo] = useState({ productos: [], categorias: [] });
+  const [catalogo, setCatalogo] = useState({ productos: [], categorias: [], tienda: {} });
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [categoriaId, setCategoriaId] = useState(null);
   const [carrito, setCarrito] = useState([]);
   const [showCarrito, setShowCarrito] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
@@ -22,7 +23,7 @@ export default function Tienda() {
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from("catalogo_publico").select("data").eq("id", 1).maybeSingle();
-      if (data && data.data) setCatalogo({ productos: data.data.productos || [], categorias: data.data.categorias || [] });
+      if (data && data.data) setCatalogo({ productos: data.data.productos || [], categorias: data.data.categorias || [], tienda: data.data.tienda || {} });
       setLoading(false);
     })();
   }, []);
@@ -50,9 +51,18 @@ export default function Tienda() {
 
   const filtrados = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return catalogo.productos;
-    return catalogo.productos.filter((p) => p.nombre.toLowerCase().includes(q));
-  }, [catalogo, query]);
+    return catalogo.productos.filter((p) => {
+      if (categoriaId && p.categoriaId !== categoriaId) return false;
+      if (q && !p.nombre.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [catalogo, query, categoriaId]);
+
+  const cantidadPorCategoria = useMemo(() => {
+    const conteo = {};
+    catalogo.productos.forEach((p) => { if (p.categoriaId) conteo[p.categoriaId] = (conteo[p.categoriaId] || 0) + 1; });
+    return conteo;
+  }, [catalogo]);
 
   async function confirmarPedido(cliente) {
     const fecha = new Date();
@@ -123,56 +133,106 @@ export default function Tienda() {
         ::placeholder { color: #A7A29A; }
       `}</style>
 
-      <div style={{ background: "#1C1D1F", padding: "16px 24px", position: "sticky", top: 0, zIndex: 20 }}>
-        <div style={{ maxWidth: 1000, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div className="sg" style={{ color: "#fff", fontSize: 18, fontWeight: 700 }}>Tienda</div>
-          <button onClick={() => setShowCarrito(true)} style={{ position: "relative", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+      {/* Barra superior */}
+      <div style={{ background: "#6B6560", padding: "6px 24px", textAlign: "center" }}>
+        <span style={{ color: "#fff", fontSize: 12.5, fontWeight: 500 }}>Hacé tu pedido en línea</span>
+      </div>
+
+      {/* Header: logo + buscador + carrito */}
+      <div style={{ background: "#fff", padding: "16px 24px", borderBottom: "1px solid #E4E2DD" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            {catalogo.tienda?.logoUrl ? (
+              <img src={catalogo.tienda.logoUrl} alt={catalogo.tienda?.nombreNegocio || "Logo"} style={{ height: 48, objectFit: "contain" }} />
+            ) : (
+              <span className="sg" style={{ fontSize: 20, fontWeight: 700 }}>{catalogo.tienda?.nombreNegocio || "Tienda"}</span>
+            )}
+          </div>
+          <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+            <Search size={16} style={{ position: "absolute", left: 12, top: 12, color: "#A7A29A" }} />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar producto…" style={{ width: "100%", padding: "10px 12px 10px 36px", borderRadius: 8, border: "1px solid #E4E2DD", background: "#fff", fontSize: 14, boxSizing: "border-box" }} />
+          </div>
+          <button onClick={() => setShowCarrito(true)} style={{ position: "relative", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
             <ShoppingCart size={16} /> Carrito
             {cantidadItems > 0 && <span style={{ position: "absolute", top: -6, right: -6, background: "#B23A3A", color: "#fff", borderRadius: 999, fontSize: 10.5, width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{cantidadItems}</span>}
           </button>
         </div>
       </div>
 
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "20px 24px" }}>
-        <div style={{ position: "relative", marginBottom: 20 }}>
-          <Search size={16} style={{ position: "absolute", left: 12, top: 12, color: "#A7A29A" }} />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar producto…" style={{ width: "100%", padding: "10px 12px 10px 36px", borderRadius: 10, border: "1px solid #E4E2DD", background: "#fff", fontSize: 14, boxSizing: "border-box" }} />
+      {/* Menú */}
+      <div style={{ background: "#6B6560", padding: "0 24px" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex" }}>
+          <div style={{ background: "#fff", color: "#1C1D1F", padding: "10px 20px", fontSize: 13.5, fontWeight: 600 }}>Inicio</div>
+        </div>
+      </div>
+
+      {/* Banner */}
+      {catalogo.tienda?.bannerUrl && (
+        <div style={{ width: "100%", maxHeight: 320, overflow: "hidden" }}>
+          <img src={catalogo.tienda.bannerUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        </div>
+      )}
+
+      {/* Catálogo con menú de categorías al costado */}
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 24px", display: "flex", gap: 20, alignItems: "flex-start" }}>
+        <div style={{ width: 200, flexShrink: 0, background: "#fff", border: "1px solid #E4E2DD", borderRadius: 12, padding: 14, position: "sticky", top: 20 }}>
+          <div className="sg" style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Categorías</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <button
+              onClick={() => setCategoriaId(null)}
+              style={{ textAlign: "left", background: !categoriaId ? "#EEF5F3" : "none", color: !categoriaId ? "#0F6B5C" : "#4A4642", border: "none", borderRadius: 6, padding: "7px 8px", fontSize: 13, fontWeight: !categoriaId ? 600 : 400, cursor: "pointer" }}
+            >
+              Todas
+            </button>
+            {catalogo.categorias.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setCategoriaId(c.id)}
+                style={{ textAlign: "left", background: categoriaId === c.id ? "#EEF5F3" : "none", color: categoriaId === c.id ? "#0F6B5C" : "#4A4642", border: "none", borderRadius: 6, padding: "7px 8px", fontSize: 13, fontWeight: categoriaId === c.id ? 600 : 400, cursor: "pointer", display: "flex", justifyContent: "space-between" }}
+              >
+                <span>{c.nombre}</span>
+                <span style={{ color: "#A7A29A", fontSize: 11.5 }}>{cantidadPorCategoria[c.id] || 0}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
-        {loading ? (
-          <div style={{ textAlign: "center", padding: 60, color: "#A7A29A" }}>Cargando productos…</div>
-        ) : filtrados.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 60, color: "#A7A29A" }}>
-            <Package size={32} style={{ marginBottom: 10 }} />
-            <div>No hay productos disponibles todavía.</div>
-          </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
-            {filtrados.map((p) => {
-              const enCarrito = carrito.find((it) => it.id === p.id)?.cantidad || 0;
-              const agotado = !p.disponible || enCarrito >= p.cantidadDisponible;
-              return (
-                <div key={p.id} style={{ background: "#fff", border: "1px solid #E4E2DD", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-                  <div style={{ width: "100%", aspectRatio: "1", background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-                    {p.imagenUrl ? <img src={p.imagenUrl} alt={p.nombre} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Package size={28} color="#C9C5BD" />}
-                    {!p.disponible && <div style={{ position: "absolute", top: 8, right: 8, background: "#B23A3A", color: "#fff", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 999 }}>Sin stock</div>}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {loading ? (
+            <div style={{ textAlign: "center", padding: 60, color: "#A7A29A" }}>Cargando productos…</div>
+          ) : filtrados.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 60, color: "#A7A29A" }}>
+              <Package size={32} style={{ marginBottom: 10 }} />
+              <div>No hay productos en esta categoría todavía.</div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 }}>
+              {filtrados.map((p) => {
+                const enCarrito = carrito.find((it) => it.id === p.id)?.cantidad || 0;
+                const agotado = !p.disponible || enCarrito >= p.cantidadDisponible;
+                return (
+                  <div key={p.id} style={{ background: "#fff", border: "1px solid #E4E2DD", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                    <div style={{ width: "100%", aspectRatio: "1", background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                      {p.imagenUrl ? <img src={p.imagenUrl} alt={p.nombre} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Package size={28} color="#C9C5BD" />}
+                      {!p.disponible && <div style={{ position: "absolute", top: 8, right: 8, background: "#B23A3A", color: "#fff", fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 999 }}>Sin stock</div>}
+                    </div>
+                    <div style={{ padding: 12, display: "flex", flexDirection: "column", flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{p.nombre}</div>
+                      <div className="sg" style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>{fmtMoney(p.precio)}</div>
+                      <button
+                        onClick={() => agregarAlCarrito(p)}
+                        disabled={agotado}
+                        style={{ marginTop: "auto", background: agotado ? "#EFEDE8" : "#0F6B5C", color: agotado ? "#A7A29A" : "#fff", border: "none", borderRadius: 8, padding: "8px", fontSize: 12.5, fontWeight: 600, cursor: agotado ? "default" : "pointer" }}
+                      >
+                        {!p.disponible ? "Sin stock" : enCarrito >= p.cantidadDisponible ? "Sin más stock" : "Agregar al carrito"}
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ padding: 12, display: "flex", flexDirection: "column", flex: 1 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 4 }}>{p.nombre}</div>
-                    <div className="sg" style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>{fmtMoney(p.precio)}</div>
-                    <button
-                      onClick={() => agregarAlCarrito(p)}
-                      disabled={agotado}
-                      style={{ marginTop: "auto", background: agotado ? "#EFEDE8" : "#0F6B5C", color: agotado ? "#A7A29A" : "#fff", border: "none", borderRadius: 8, padding: "8px", fontSize: 12.5, fontWeight: 600, cursor: agotado ? "default" : "pointer" }}
-                    >
-                      {!p.disponible ? "Sin stock" : enCarrito >= p.cantidadDisponible ? "Sin más stock" : "Agregar al carrito"}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {showCarrito && (
