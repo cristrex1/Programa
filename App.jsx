@@ -3,7 +3,7 @@ import {
   Package, Wrench, Users, Receipt, Building2, Search, Plus, X, Trash2, Pencil,
   Calendar, Phone, Mail, MapPin, CreditCard, Printer, Tag, ChevronDown, ChevronRight,
   ChevronLeft, AlertCircle, CircleDot, AlertTriangle, FileText, CheckCircle2, Clock,
-  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, RefreshCw, LogOut, Mail as MailIcon, Lock,
+  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, RefreshCw, ImagePlus, ImageOff, LogOut, Mail as MailIcon, Lock, ShoppingCart, Package as PackageIcon, Store,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 
@@ -82,13 +82,14 @@ const CONDICIONES_IVA = [
   { value: "exento", label: "Exento", factura: "C" },
 ];
 
-const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null };
+const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null, tienda: { nombreNegocio: "", logoUrl: "", bannerUrl: "" } };
 
 const TABS = [
   { id: "stock", label: "Stock", icon: Package, accent: "#0F6B5C" },
   { id: "reparaciones", label: "Reparaciones", icon: Wrench, accent: "#C9822C" },
   { id: "agenda", label: "Agenda", icon: Users, accent: "#4A5FA8" },
   { id: "facturacion", label: "Facturación", icon: Receipt, accent: "#2E5F8A" },
+  { id: "pedidosweb", label: "Pedidos Web", icon: ShoppingCart, accent: "#8A5A17" },
 ];
 
 // ---------- Shared UI ----------
@@ -320,6 +321,21 @@ function SistemaIntegrado({ session }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
+  useEffect(() => {
+    if (!loading) sincronizarCatalogoPublico(data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  async function subirImagenProducto(file) {
+    if (file.size > 4 * 1024 * 1024) throw new Error("La imagen no puede pesar más de 4MB");
+    const ext = file.name.split(".").pop();
+    const path = `${uid()}.${ext}`;
+    const { error } = await supabase.storage.from("productos").upload(path, file, { upsert: true });
+    if (error) throw new Error("No se pudo subir la imagen");
+    const { data: pub } = supabase.storage.from("productos").getPublicUrl(path);
+    return pub.publicUrl;
+  }
+
   function crearCategoria(nombre, margen) {
     const c = { id: uid(), nombre, margen: Number(margen) || 0 };
     persist({ categorias: [...data.categorias, c] });
@@ -337,6 +353,34 @@ function SistemaIntegrado({ session }) {
     setData(next);
     const { error } = await supabase.from("estado_sistema").upsert({ id: 1, data: next, updated_at: new Date().toISOString() });
     setSaveError(!!error);
+    if (patch.productos || patch.categorias || patch.unidades || patch.dolarVenta !== undefined || patch.tienda) {
+      sincronizarCatalogoPublico(next);
+    }
+  }
+
+  async function sincronizarCatalogoPublico(d) {
+    const productosPublicos = (d.productos || []).map((p) => {
+      const esCantidad = p.controlSerie === false;
+      const cantidadDisponible = esCantidad
+        ? Number(p.cantidadStock) || 0
+        : (d.unidades || []).filter((u) => u.productId === p.id && u.estado === "disponible").length;
+      return {
+        id: p.id,
+        nombre: p.nombre,
+        categoriaId: p.categoriaId,
+        imagenUrl: p.imagenUrl || "",
+        descripcion: p.descripcion || "",
+        precio: precioVentaDe(p, d.dolarVenta, d.categorias),
+        disponible: cantidadDisponible > 0,
+        cantidadDisponible,
+      };
+    });
+    const categoriasPublicas = (d.categorias || []).map((c) => ({ id: c.id, nombre: c.nombre }));
+    await supabase.from("catalogo_publico").upsert({
+      id: 1,
+      data: { productos: productosPublicos, categorias: categoriasPublicas, tienda: d.tienda || {} },
+      updated_at: new Date().toISOString(),
+    });
   }
 
   function crearContacto(fields) {
@@ -409,17 +453,17 @@ function SistemaIntegrado({ session }) {
         ::placeholder { color: #A7A29A; }
         .spin { animation: spin 0.8s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .print-area { display: none; }
         @media print {
-          body * { visibility: hidden; }
-          #print-area, #print-area * { visibility: visible; }
-          #print-area { position: absolute; top: 0; left: 0; width: 100%; padding: 20px; }
-          .no-print { display: none !important; }
+          .app-shell { display: none !important; }
+          .print-area { display: block !important; padding: 20px; }
         }
       `}</style>
-      <div id="print-area" style={{ position: "absolute", left: -9999, top: 0, width: 700 }}>
+      <div className="print-area">
         <PrintArea payload={printPayload} />
       </div>
 
+      <div className="app-shell">
       <div className="no-print" style={{ background: "#1C1D1F", padding: "16px 24px" }}>
         <div style={{ maxWidth: 1000, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -466,23 +510,27 @@ function SistemaIntegrado({ session }) {
         {loading ? (
           <div style={{ textAlign: "center", padding: 40, color: "#A7A29A" }}>Cargando…</div>
         ) : tab === "stock" ? (
-          <TabStock data={data} persist={persist} imprimir={imprimir} crearCategoria={crearCategoria} editarCategoria={editarCategoria} eliminarCategoria={eliminarCategoria} />
+          <TabStock data={data} persist={persist} imprimir={imprimir} crearCategoria={crearCategoria} editarCategoria={editarCategoria} eliminarCategoria={eliminarCategoria} subirImagen={subirImagenProducto} />
         ) : tab === "reparaciones" ? (
           <TabReparaciones data={data} persist={persist} crearContacto={crearContacto} irAFacturar={irAFacturarDesdeOrden} imprimir={imprimir} />
         ) : tab === "agenda" ? (
           <TabAgenda data={data} persist={persist} deudaDe={deudaDe} imprimir={imprimir} />
-        ) : (
+        ) : tab === "facturacion" ? (
           <TabFacturacion data={data} persist={persist} crearContacto={crearContacto} registrarVenta={registrarVenta} draft={ventaDraft} clearDraft={() => setVentaDraft(null)} imprimir={imprimir} />
+        ) : (
+          <TabPedidosWeb />
         )}
+      </div>
       </div>
     </div>
   );
 }
 
 // ---------- TAB: STOCK ----------
-function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, eliminarCategoria }) {
-  const { productos, unidades, categorias, dolarVenta } = data;
+function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, eliminarCategoria, subirImagen }) {
+  const { productos, unidades, categorias, dolarVenta, tienda } = data;
   const [showCategorias, setShowCategorias] = useState(false);
+  const [showTienda, setShowTienda] = useState(false);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState({});
   const [showProductForm, setShowProductForm] = useState(false);
@@ -532,6 +580,7 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
         </div>
         <button onClick={() => imprimir({ tipo: "inventario", productos: filtered, unidades, categorias, dolarVenta })} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Printer size={15} /> Imprimir</button>
         <button onClick={() => setShowCategorias(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Tag size={15} /> Categorías</button>
+        <button onClick={() => setShowTienda(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><ShoppingCart size={15} /> Tienda online</button>
         <button onClick={() => { setEditingProduct(null); setShowProductForm(true); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 10, padding: "0 16px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Plus size={16} /> Producto</button>
       </div>
 
@@ -550,6 +599,9 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
               <div key={p.id} style={{ background: "#fff", border: "1px solid #E4E2DD", borderRadius: 12, overflow: "hidden" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 14px", cursor: p.controlSerie === false ? "default" : "pointer" }} onClick={() => { if (p.controlSerie !== false) setExpanded((s) => ({ ...s, [p.id]: !s[p.id] })); }}>
                   {p.controlSerie === false ? <span style={{ width: 18 }} /> : <button style={{ background: "none", border: "none", cursor: "pointer", color: "#A7A29A", padding: 0 }}>{exp ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</button>}
+                  <div style={{ width: 38, height: 38, borderRadius: 8, background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                    {p.imagenUrl ? <img src={p.imagenUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageOff size={15} color="#C9C5BD" />}
+                  </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span className="sg" style={{ fontWeight: 600, fontSize: 15 }}>{p.nombre}</span>
@@ -604,7 +656,7 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
 
       {showProductForm && (
         <Modal title={editingProduct ? "Editar producto" : "Nuevo producto"} onClose={() => { setShowProductForm(false); setEditingProduct(null); }}>
-          <ProductForm initial={editingProduct} onSave={saveProduct} categorias={categorias} crearCategoria={crearCategoria} dolarVenta={dolarVenta} />
+          <ProductForm initial={editingProduct} onSave={saveProduct} categorias={categorias} crearCategoria={crearCategoria} dolarVenta={dolarVenta} subirImagen={subirImagen} />
         </Modal>
       )}
       {unitFormFor && (
@@ -617,6 +669,69 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
           <CategoriasModal categorias={categorias} onCrear={crearCategoria} onEditar={editarCategoria} onEliminar={eliminarCategoria} />
         </Modal>
       )}
+      {showTienda && (
+        <Modal title="Tienda online" onClose={() => setShowTienda(false)} wide>
+          <ConfiguracionTiendaModal tienda={tienda} subirImagen={subirImagen} onGuardar={(t) => { persist({ tienda: t }); setShowTienda(false); }} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+function ConfiguracionTiendaModal({ tienda, subirImagen, onGuardar }) {
+  const [nombreNegocio, setNombreNegocio] = useState(tienda?.nombreNegocio || "");
+  const [logoUrl, setLogoUrl] = useState(tienda?.logoUrl || "");
+  const [bannerUrl, setBannerUrl] = useState(tienda?.bannerUrl || "");
+  const [subiendo, setSubiendo] = useState("");
+  const [error, setError] = useState("");
+
+  async function subir(file, setter, campo) {
+    setError("");
+    setSubiendo(campo);
+    try {
+      const url = await subirImagen(file);
+      setter(url);
+    } catch (err) {
+      setError(err.message || "No se pudo subir la imagen");
+    }
+    setSubiendo("");
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, color: "#6B6560", background: "#FAFAF8", borderRadius: 8, padding: "8px 10px", marginBottom: 14 }}>
+        Esto controla cómo se ve la tienda online en <span className="mono">/tienda</span>.
+      </div>
+      <Field label="Nombre del negocio (se muestra si no cargás un logo)">
+        <input style={inputStyle} value={nombreNegocio} onChange={(e) => setNombreNegocio(e.target.value)} placeholder="Ej: T-Rex Computación" />
+      </Field>
+      <Field label="Logo">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 10, background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+            {logoUrl ? <img src={logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <Store size={20} color="#A7A29A" />}
+          </div>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EEF5F3", color: "#0F6B5C", border: "1px solid #CFE3DD", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            <ImagePlus size={13} /> {subiendo === "logo" ? "Subiendo…" : "Elegir logo"}
+            <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && subir(e.target.files[0], setLogoUrl, "logo")} disabled={!!subiendo} style={{ display: "none" }} />
+          </label>
+          {logoUrl && <button type="button" onClick={() => setLogoUrl("")} style={{ background: "none", border: "none", color: "#C97B7B", fontSize: 12.5, cursor: "pointer" }}>Quitar</button>}
+        </div>
+      </Field>
+      <Field label="Banner (imagen ancha arriba del catálogo)">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ width: "100%", height: 100, borderRadius: 10, background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+            {bannerUrl ? <img src={bannerUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageOff size={20} color="#A7A29A" />}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EEF5F3", color: "#0F6B5C", border: "1px solid #CFE3DD", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              <ImagePlus size={13} /> {subiendo === "banner" ? "Subiendo…" : "Elegir banner"}
+              <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && subir(e.target.files[0], setBannerUrl, "banner")} disabled={!!subiendo} style={{ display: "none" }} />
+            </label>
+            {bannerUrl && <button type="button" onClick={() => setBannerUrl("")} style={{ background: "none", border: "none", color: "#C97B7B", fontSize: 12.5, cursor: "pointer" }}>Quitar</button>}
+          </div>
+        </div>
+      </Field>
+      {error && <div style={{ fontSize: 12, color: "#B23A3A", marginBottom: 10 }}>{error}</div>}
+      <button onClick={() => onGuardar({ nombreNegocio: nombreNegocio.trim(), logoUrl, bannerUrl })} style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Guardar</button>
     </div>
   );
 }
@@ -644,7 +759,7 @@ function CategoriasModal({ categorias, onCrear, onEditar, onEliminar }) {
     </div>
   );
 }
-function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta }) {
+function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta, subirImagen }) {
   const [nombre, setNombre] = useState(initial?.nombre || "");
   const [categoriaId, setCategoriaId] = useState(initial?.categoriaId || null);
   const [costoUSD, setCostoUSD] = useState(initial?.costoUSD ?? "");
@@ -653,13 +768,45 @@ function ProductForm({ initial, onSave, categorias, crearCategoria, dolarVenta }
   const [cantidadStock, setCantidadStock] = useState(initial?.cantidadStock ?? "0");
   const [numeroSerieUnico, setNumeroSerieUnico] = useState(initial?.numeroSerieUnico || "");
   const [descripcion, setDescripcion] = useState(initial?.descripcion || "");
+  const [imagenUrl, setImagenUrl] = useState(initial?.imagenUrl || "");
+  const [subiendoImagen, setSubiendoImagen] = useState(false);
+  const [errorImagen, setErrorImagen] = useState("");
+
+  async function onFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErrorImagen("");
+    setSubiendoImagen(true);
+    try {
+      const url = await subirImagen(file);
+      setImagenUrl(url);
+    } catch (err) {
+      setErrorImagen(err.message || "No se pudo subir la imagen");
+    }
+    setSubiendoImagen(false);
+  }
 
   const categoria = categorias.find((c) => c.id === categoriaId);
   const margenEfectivo = categoria ? (Number(categoria.margen) || 0) : (Number(margenPropio) || 0);
   const precioVenta = (Number(costoUSD) || 0) * (Number(dolarVenta) || 0) * (1 + margenEfectivo / 100);
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (!nombre.trim()) return; onSave({ nombre: nombre.trim(), categoriaId, costoUSD: Number(costoUSD) || 0, margen: categoria ? null : (Number(margenPropio) || 0), controlSerie, cantidadStock: controlSerie ? null : (Number(cantidadStock) || 0), numeroSerieUnico: controlSerie ? "" : numeroSerieUnico.trim(), descripcion: descripcion.trim() }); }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (!nombre.trim()) return; onSave({ nombre: nombre.trim(), categoriaId, costoUSD: Number(costoUSD) || 0, margen: categoria ? null : (Number(margenPropio) || 0), controlSerie, cantidadStock: controlSerie ? null : (Number(cantidadStock) || 0), numeroSerieUnico: controlSerie ? "" : numeroSerieUnico.trim(), imagenUrl, descripcion: descripcion.trim() }); }}>
+      <Field label="Foto del producto">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 10, background: "#F0EEE9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+            {imagenUrl ? <img src={imagenUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <ImageOff size={20} color="#A7A29A" />}
+          </div>
+          <div>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#EEF5F3", color: "#0F6B5C", border: "1px solid #CFE3DD", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              <ImagePlus size={13} /> {subiendoImagen ? "Subiendo…" : imagenUrl ? "Cambiar foto" : "Elegir foto"}
+              <input type="file" accept="image/*" onChange={onFileChange} disabled={subiendoImagen} style={{ display: "none" }} />
+            </label>
+            {imagenUrl && <button type="button" onClick={() => setImagenUrl("")} style={{ marginLeft: 8, background: "none", border: "none", color: "#C97B7B", fontSize: 12.5, cursor: "pointer" }}>Quitar</button>}
+            {errorImagen && <div style={{ fontSize: 11.5, color: "#B23A3A", marginTop: 4 }}>{errorImagen}</div>}
+          </div>
+        </div>
+      </Field>
       <Field label="Nombre del producto"><input autoFocus style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} /></Field>
       <Field label="Categoría"><CategoriaSelector categorias={categorias} value={categoriaId} onChange={setCategoriaId} onCreateCategoria={crearCategoria} /></Field>
       <div style={{ display: "flex", gap: 10 }}>
@@ -1103,6 +1250,70 @@ function ServForm({ onSave }) {
 }
 
 // ---------- TAB: FACTURACIÓN ----------
+function TabPedidosWeb() {
+  const [pedidos, setPedidos] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  async function cargar() {
+    setLoading(true);
+    const { data } = await supabase.from("pedidos_web").select("*").order("created_at", { ascending: false });
+    setPedidos(data || []);
+    setLoading(false);
+  }
+
+  useEffect(() => { cargar(); }, []);
+
+  async function marcarEstado(id, estado) {
+    await supabase.from("pedidos_web").update({ estado }).eq("id", id);
+    setPedidos((ps) => ps.map((p) => (p.id === id ? { ...p, estado } : p)));
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div className="sg" style={{ fontSize: 15, fontWeight: 700 }}>Pedidos recibidos por la tienda</div>
+        <button onClick={cargar} style={{ display: "flex", alignItems: "center", gap: 5, background: "#fff", border: "1px solid #E4E2DD", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, cursor: "pointer" }}><RefreshCw size={13} /> Actualizar</button>
+      </div>
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 40, color: "#A7A29A" }}>Cargando…</div>
+      ) : pedidos.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "50px 20px", background: "#fff", border: "1px dashed #E4E2DD", borderRadius: 12 }}>
+          <ShoppingCart size={28} color="#A7A29A" style={{ marginBottom: 10 }} />
+          <div style={{ fontSize: 14, color: "#6B6560" }}>Todavía no llegó ningún pedido desde la tienda.</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {pedidos.map((p) => {
+            const d = p.data || {};
+            return (
+              <div key={p.id} style={{ background: "#fff", border: "1px solid #E4E2DD", borderRadius: 12, padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                  <div>
+                    <div className="sg" style={{ fontWeight: 600, fontSize: 14.5 }}>{d.cliente?.nombre || "Sin nombre"}</div>
+                    <div style={{ fontSize: 12, color: "#8C8880" }}>{d.cliente?.telefono || "sin teléfono"} · {new Date(p.created_at).toLocaleString("es-AR")}</div>
+                  </div>
+                  <select value={p.estado} onChange={(e) => marcarEstado(p.id, e.target.value)} style={{ fontSize: 12, borderRadius: 999, border: "1px solid #E4E2DD", padding: "4px 10px", background: p.estado === "nuevo" ? "#FBF0E1" : "#E7F2EF", color: p.estado === "nuevo" ? "#8A5A17" : "#0F6B5C", fontWeight: 600 }}>
+                    <option value="nuevo">Nuevo</option>
+                    <option value="atendido">Atendido</option>
+                  </select>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+                  {(d.items || []).map((it, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span>{it.cantidad} × {it.nombre}</span>
+                      <span>{fmtMoney(it.precio * it.cantidad)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ textAlign: "right", fontWeight: 700, fontSize: 14 }} className="sg">Total: {fmtMoney(d.total)}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 function TabFacturacion({ data, persist, crearContacto, registrarVenta, draft, clearDraft, imprimir }) {
   const { ventas, contactos, productos, unidades, dolarVenta, categorias } = data;
   const [query, setQuery] = useState("");
