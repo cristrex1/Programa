@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { ShoppingCart, Plus, Minus, X, Search, Package, CheckCircle2, MessageCircle, MapPin, Clock, Phone, Mail, Instagram, Facebook, Youtube } from "lucide-react";
+import { ShoppingCart, Plus, Minus, X, Search, Package, CheckCircle2, MessageCircle, MapPin, Clock, Phone, Mail, Instagram, Facebook, Youtube, Wrench, Server, ShieldCheck, CheckCircle, Headphones, ClipboardList } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { jsPDF } from "jspdf";
 
@@ -12,6 +12,7 @@ const WHATSAPP_NUMERO = import.meta.env.VITE_WHATSAPP_NUMERO || "";
 
 export default function Tienda() {
   const [catalogo, setCatalogo] = useState({ productos: [], categorias: [], tienda: {} });
+  const [vista, setVista] = useState("inicio");
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [categoriaId, setCategoriaId] = useState(null);
@@ -162,10 +163,13 @@ export default function Tienda() {
       {/* Menú */}
       <div style={{ background: "#6B6560", padding: "0 24px" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex" }}>
-          <div style={{ background: "#fff", color: "#1C1D1F", padding: "10px 20px", fontSize: 13.5, fontWeight: 600 }}>Inicio</div>
+          <button onClick={() => setVista("inicio")} style={{ background: vista === "inicio" ? "#fff" : "transparent", color: vista === "inicio" ? "#1C1D1F" : "#fff", border: "none", padding: "10px 20px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Inicio</button>
+          <button onClick={() => setVista("servicios")} style={{ background: vista === "servicios" ? "#fff" : "transparent", color: vista === "servicios" ? "#1C1D1F" : "#fff", border: "none", padding: "10px 20px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Servicios</button>
         </div>
       </div>
 
+      {vista === "inicio" ? (
+        <>
       {/* Banner */}
       <BannerCarrusel imagenes={catalogo.tienda?.bannerUrls?.length ? catalogo.tienda.bannerUrls : (catalogo.tienda?.bannerUrl ? [catalogo.tienda.bannerUrl] : [])} />
 
@@ -230,6 +234,10 @@ export default function Tienda() {
           )}
         </div>
       </div>
+        </>
+      ) : (
+        <PaginaServicios whatsapp={WHATSAPP_NUMERO} />
+      )}
 
       <TiendaFooter tienda={catalogo.tienda} />
 
@@ -278,6 +286,117 @@ export default function Tienda() {
             <div style={{ fontSize: 13.5, color: "#6B6560", marginBottom: 16 }}>Se descargó el PDF de tu pedido. Se abrió WhatsApp con el mensaje listo — solo confirmá el envío y, si querés, adjuntá el PDF descargado.</div>
             <button onClick={() => setPedidoConfirmado(false)} style={{ background: "#1C1D1F", color: "#fff", border: "none", borderRadius: 9, padding: "10px 20px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Listo</button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaginaServicios({ whatsapp }) {
+  const bloques = [
+    {
+      icono: Wrench,
+      titulo: "Reparación",
+      items: ["Reparación de PC", "Reparación de Notebook", "Reparación de Impresoras"],
+    },
+    {
+      icono: Server,
+      titulo: "Redes e Infraestructura",
+      items: ["Cableado estructurado de redes informáticas", "Configuración de servidor de datos", "Conexión de router · Configuración de PC"],
+    },
+  ];
+
+  const itemsMantenimiento = [
+    "Mantenimiento y reparación de equipos informáticos",
+    "Auditoría informática",
+    "Configuración y mantenimiento de redes",
+    "Configuración y optimización de sistemas operativos",
+    "Actualización de software",
+    "Seguridad en sistemas informáticos para empresas y videovigilancia",
+    "Método de realización del servicio",
+    "Soporte técnico telefónico",
+  ];
+
+  const mensajeWpp = encodeURIComponent("¡Hola! Quiero consultar por sus servicios técnicos.");
+
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "48px 24px 60px" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&display=swap');
+        .servicios-mantenimiento { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(260px, 1.1fr); gap: 32px; }
+        @media (max-width: 700px) { .servicios-mantenimiento { grid-template-columns: 1fr; } }
+      `}</style>
+
+      <div style={{ textAlign: "center", marginBottom: 40 }}>
+        <div style={{ display: "inline-block", fontSize: 11.5, fontWeight: 700, letterSpacing: 1.5, color: "#0F6B5C", background: "#EEF5F3", padding: "5px 14px", borderRadius: 999, marginBottom: 14, textTransform: "uppercase" }}>
+          Servicio técnico
+        </div>
+        <h1 className="sg" style={{ fontSize: 32, fontWeight: 700, color: "#1C1D1F", margin: "0 0 10px" }}>Nuestros Servicios</h1>
+        <p style={{ fontSize: 15, color: "#6B6560", maxWidth: 560, margin: "0 auto" }}>
+          Soporte técnico integral para tu equipo, tu red y tu negocio — desde una reparación puntual hasta el mantenimiento continuo de toda tu infraestructura.
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20, marginBottom: 28 }}>
+        {bloques.map((b, i) => {
+          const Icono = b.icono;
+          return (
+            <div key={i} style={{ background: "#fff", border: "1px solid #E4E2DD", borderRadius: 16, padding: 28 }}>
+              <div style={{ width: 46, height: 46, borderRadius: 12, background: "#1C1D1F", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18 }}>
+                <Icono size={22} color="#fff" />
+              </div>
+              <div className="sg" style={{ fontSize: 17, fontWeight: 700, marginBottom: 12 }}>{b.titulo}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {b.items.map((it, j) => (
+                  <div key={j} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13.5, color: "#4A4642" }}>
+                    <span style={{ width: 5, height: 5, borderRadius: 999, background: "#0F6B5C", marginTop: 7, flexShrink: 0 }} />
+                    {it}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="servicios-mantenimiento" style={{ background: "#1C1D1F", borderRadius: 18, padding: "36px 32px", color: "#fff" }}>
+        <div>
+          <div style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18 }}>
+            <ShieldCheck size={22} color="#fff" />
+          </div>
+          <div className="sg" style={{ fontSize: 20, fontWeight: 700, marginBottom: 14 }}>Servicio de Mantenimiento</div>
+          <p style={{ fontSize: 13.5, color: "#B7B3AC", lineHeight: 1.65, margin: 0 }}>
+            Los servicios de mantenimiento se encargan de prevenir y solucionar averías en equipos, máquinas e instalaciones, con el fin de garantizar su óptimo funcionamiento.
+            Brindamos asistencia al personal de la empresa o a los clientes: ejecutamos diagnósticos en hardware o software defectuoso, reemplazamos las piezas de hardware dañadas según sea necesario, y redactamos informes sobre el estado de todo el hardware y software de la empresa.
+          </p>
+        </div>
+        <div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+            {itemsMantenimiento.map((it, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <CheckCircle size={16} color="#4FD1B3" style={{ flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontSize: 13.5, fontWeight: 500 }}>{it}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#EEF5F3", border: "1px solid #CFE3DD", borderRadius: 14, padding: "16px 22px", marginTop: 24, flexWrap: "wrap" }}>
+        <ClipboardList size={20} color="#0F6B5C" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 13.5, color: "#1C1D1F" }}><strong>El valor del trabajo se basará en la cantidad de equipos.</strong> Escribinos y te pasamos un presupuesto a medida.</span>
+      </div>
+
+      {whatsapp && (
+        <div style={{ textAlign: "center", marginTop: 36 }}>
+          <a
+            href={`https://wa.me/${whatsapp}?text=${mensajeWpp}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#0F6B5C", color: "#fff", textDecoration: "none", borderRadius: 999, padding: "13px 28px", fontSize: 14, fontWeight: 600 }}
+          >
+            <Headphones size={17} /> Consultar por WhatsApp
+          </a>
         </div>
       )}
     </div>
