@@ -167,11 +167,7 @@ export default function Tienda() {
       </div>
 
       {/* Banner */}
-      {catalogo.tienda?.bannerUrl && (
-        <div style={{ width: "100%", maxHeight: 320, overflow: "hidden" }}>
-          <img src={catalogo.tienda.bannerUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        </div>
-      )}
+      <BannerCarrusel imagenes={catalogo.tienda?.bannerUrls?.length ? catalogo.tienda.bannerUrls : (catalogo.tienda?.bannerUrl ? [catalogo.tienda.bannerUrl] : [])} />
 
       {/* Catálogo con menú de categorías al costado */}
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 24px", display: "flex", gap: 20, alignItems: "flex-start" }}>
@@ -280,6 +276,58 @@ export default function Tienda() {
             <div style={{ fontSize: 13.5, color: "#6B6560", marginBottom: 16 }}>Se descargó el PDF de tu pedido. Se abrió WhatsApp con el mensaje listo — solo confirmá el envío y, si querés, adjuntá el PDF descargado.</div>
             <button onClick={() => setPedidoConfirmado(false)} style={{ background: "#1C1D1F", color: "#fff", border: "none", borderRadius: 9, padding: "10px 20px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Listo</button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BannerCarrusel({ imagenes }) {
+  const [indice, setIndice] = useState(0);
+
+  useEffect(() => {
+    if (imagenes.length <= 1) return;
+    const t = setInterval(() => setIndice((i) => (i + 1) % imagenes.length), 4000);
+    return () => clearInterval(t);
+  }, [imagenes.length]);
+
+  if (imagenes.length === 0) return null;
+
+  return (
+    <div style={{ width: "100%", height: 320, position: "relative", overflow: "hidden", background: "#EFEDE8" }}>
+      {imagenes.map((url, i) => (
+        <img
+          key={i}
+          src={url}
+          alt=""
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            opacity: i === indice ? 1 : 0,
+            transition: "opacity 0.9s ease",
+          }}
+        />
+      ))}
+      {imagenes.length > 1 && (
+        <div style={{ position: "absolute", bottom: 12, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 6 }}>
+          {imagenes.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIndice(i)}
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                border: "none",
+                cursor: "pointer",
+                background: i === indice ? "#fff" : "rgba(255,255,255,0.5)",
+                boxShadow: "0 0 0 1px rgba(0,0,0,0.15)",
+              }}
+            />
+          ))}
         </div>
       )}
     </div>
