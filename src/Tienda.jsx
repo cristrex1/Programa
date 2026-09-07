@@ -288,6 +288,77 @@ export default function Tienda() {
           </div>
         </div>
       )}
+
+      <BotonFlotanteWhatsapp numero={WHATSAPP_NUMERO} />
+    </div>
+  );
+}
+
+function BotonFlotanteWhatsapp({ numero }) {
+  if (!numero) return null;
+  const mensaje = encodeURIComponent("¡Hola! Tengo una consulta.");
+  return (
+    <a
+      href={`https://wa.me/${numero}?text=${mensaje}`}
+      target="_blank"
+      rel="noreferrer"
+      title="Consultanos por WhatsApp"
+      style={{
+        position: "fixed",
+        bottom: 22,
+        right: 22,
+        width: 58,
+        height: 58,
+        borderRadius: "50%",
+        background: "#25D366",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
+        zIndex: 40,
+        textDecoration: "none",
+      }}
+    >
+      <svg viewBox="0 0 32 32" width="30" height="30" fill="#fff"><path d="M16.004 3C9.376 3 4 8.373 4 15c0 2.34.652 4.53 1.786 6.395L4 29l7.86-1.744A11.94 11.94 0 0 0 16.004 27C22.63 27 28 21.627 28 15S22.63 3 16.004 3zm0 21.75a9.7 9.7 0 0 1-4.95-1.354l-.355-.21-4.66 1.035 1.05-4.54-.232-.368A9.68 9.68 0 0 1 5.25 15c0-5.93 4.822-10.75 10.754-10.75S26.75 9.07 26.75 15 21.936 24.75 16.004 24.75zm5.55-7.98c-.304-.152-1.797-.887-2.076-.987-.28-.102-.484-.152-.687.152-.203.303-.786.986-.964 1.19-.177.202-.354.227-.658.075-.304-.152-1.284-.473-2.446-1.51-.904-.807-1.514-1.803-1.692-2.107-.177-.303-.019-.467.133-.618.137-.136.304-.354.456-.53.152-.178.203-.304.304-.507.101-.203.05-.38-.025-.532-.076-.152-.687-1.657-.941-2.27-.248-.596-.5-.516-.687-.526l-.586-.01c-.203 0-.532.076-.81.38-.279.303-1.065 1.04-1.065 2.537 0 1.497 1.09 2.944 1.242 3.146.152.203 2.147 3.28 5.202 4.6.727.314 1.294.502 1.737.642.73.232 1.394.2 1.92.121.586-.087 1.797-.734 2.05-1.443.254-.71.254-1.318.178-1.443-.076-.126-.279-.203-.583-.354z"/></svg>
+    </a>
+  );
+}
+
+function CheckoutModal({ onClose, onConfirmar, total }) {
+  const [nombre, setNombre] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!nombre.trim() || !telefono.trim()) return;
+    setEnviando(true);
+    await onConfirmar({ nombre: nombre.trim(), telefono: telefono.trim() });
+    setEnviando(false);
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(28,29,31,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 55 }} onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 360, padding: 20 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div className="sg" style={{ fontSize: 16, fontWeight: 700 }}>Tus datos</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} /></button>
+        </div>
+        <form onSubmit={submit}>
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ display: "block", fontSize: 12.5, color: "#6B6560", marginBottom: 4 }}>Nombre</label>
+            <input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #E4E2DD", fontSize: 14, boxSizing: "border-box" }} required />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 12.5, color: "#6B6560", marginBottom: 4 }}>Teléfono / WhatsApp</label>
+            <input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="11 2345 6789" style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #E4E2DD", fontSize: 14, boxSizing: "border-box" }} required />
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, textAlign: "right" }} className="sg">Total: {fmtMoney(total)}</div>
+          <button type="submit" disabled={enviando} style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 11, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <MessageCircle size={15} /> {enviando ? "Generando…" : "Confirmar y enviar por WhatsApp"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -490,45 +561,6 @@ function BannerCarrusel({ imagenes }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function CheckoutModal({ onClose, onConfirmar, total }) {
-  const [nombre, setNombre] = useState("");
-  const [telefono, setTelefono] = useState("");
-  const [enviando, setEnviando] = useState(false);
-
-  async function submit(e) {
-    e.preventDefault();
-    if (!nombre.trim() || !telefono.trim()) return;
-    setEnviando(true);
-    await onConfirmar({ nombre: nombre.trim(), telefono: telefono.trim() });
-    setEnviando(false);
-  }
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(28,29,31,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 55 }} onClick={onClose}>
-      <div style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 360, padding: 20 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div className="sg" style={{ fontSize: 16, fontWeight: 700 }}>Tus datos</div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} /></button>
-        </div>
-        <form onSubmit={submit}>
-          <div style={{ marginBottom: 10 }}>
-            <label style={{ display: "block", fontSize: 12.5, color: "#6B6560", marginBottom: 4 }}>Nombre</label>
-            <input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #E4E2DD", fontSize: 14, boxSizing: "border-box" }} required />
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: 12.5, color: "#6B6560", marginBottom: 4 }}>Teléfono / WhatsApp</label>
-            <input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="11 2345 6789" style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #E4E2DD", fontSize: 14, boxSizing: "border-box" }} required />
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, textAlign: "right" }} className="sg">Total: {fmtMoney(total)}</div>
-          <button type="submit" disabled={enviando} style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 11, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <MessageCircle size={15} /> {enviando ? "Generando…" : "Confirmar y enviar por WhatsApp"}
-          </button>
-        </form>
-      </div>
     </div>
   );
 }
