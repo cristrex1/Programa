@@ -1390,7 +1390,7 @@ function TabFacturacion({ data, persist, crearContacto, registrarVenta, draft, c
             <div className="sg" style={{ fontSize: 18, fontWeight: 700 }}>Total: {fmtMoney(viewing.total)}</div>
           </div>
         </div>
-        <button onClick={() => imprimir({ tipo: "venta", venta: viewing, contacto })} className="no-print" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "#1C1D1F", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 14 }}><Printer size={15} /> Imprimir / Guardar PDF</button>
+        <button onClick={() => imprimir({ tipo: "venta", venta: viewing, contacto, tienda: data.tienda })} className="no-print" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "#1C1D1F", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 14 }}><Printer size={15} /> Imprimir / Guardar PDF</button>
       </div>
     );
   }
@@ -1669,9 +1669,22 @@ function PrintArea({ payload }) {
     );
   }
   if (payload.tipo === "venta") {
-    const { venta, contacto } = payload;
+    const { venta, contacto, tienda } = payload;
+    const t = tienda || {};
     return (
       <div style={{ fontFamily: "Inter, system-ui, sans-serif", color: "#1C1D1F" }}>
+        {(t.logoUrl || t.nombreNegocio || t.direccion || t.telefono || t.email) && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 12, marginBottom: 12, borderBottom: "1px solid #E4E2DD" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {t.logoUrl ? <img src={t.logoUrl} alt="" style={{ height: 46, objectFit: "contain" }} /> : <div className="sg" style={{ fontSize: 18, fontWeight: 700 }}>{t.nombreNegocio}</div>}
+              <div style={{ fontSize: 10.5, color: "#6B6560" }}>
+                {t.direccion && <div>{t.direccion}</div>}
+                {t.telefono && <div>Tel/WhatsApp: {t.telefono}</div>}
+                {t.email && <div>{t.email}</div>}
+              </div>
+            </div>
+          </div>
+        )}
         <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #1C1D1F", paddingBottom: 8, marginBottom: 14 }}>
           <h1 style={{ fontSize: 18, margin: 0 }}>{venta.tipoComprobante === "factura" ? "Factura" : "Remito"}</h1>
           <div style={{ textAlign: "right" }}><div style={{ fontSize: 13, fontWeight: 600 }}>{venta.numero}</div><div style={{ fontSize: 12, color: "#6B6560" }}>{fmtDate(venta.fecha)}</div></div>
