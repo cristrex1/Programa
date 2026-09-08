@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { ShoppingCart, Plus, Minus, X, Search, Package, CheckCircle2, MessageCircle, MapPin, Clock, Phone, Mail, Instagram, Facebook, Youtube, Wrench, Server, ShieldCheck, CheckCircle, Headphones, ClipboardList } from "lucide-react";
+import { ShoppingCart, Plus, Minus, X, Search, Package, CheckCircle2, MessageCircle, MapPin, Clock, Phone, Mail, Instagram, Facebook, Youtube, Wrench, Server, ShieldCheck, CheckCircle, Headphones, ClipboardList, Tag, ChevronDown } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { jsPDF } from "jspdf";
 
@@ -16,6 +16,7 @@ export default function Tienda() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [categoriaId, setCategoriaId] = useState(null);
+  const [menuCategoriasAbierto, setMenuCategoriasAbierto] = useState(false);
   const [carrito, setCarrito] = useState([]);
   const [showCarrito, setShowCarrito] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
@@ -132,6 +133,15 @@ export default function Tienda() {
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
         .sg { font-family: 'Space Grotesk', sans-serif; }
         ::placeholder { color: #A7A29A; }
+        .tienda-toggle-categorias { display: none; }
+        .tienda-sidebar { }
+        @media (max-width: 700px) {
+          .tienda-layout { flex-direction: column; }
+          .tienda-sidebar { display: none; width: 100% !important; position: static !important; margin-bottom: 12px; }
+          .tienda-sidebar.abierta { display: block; }
+          .tienda-toggle-categorias { display: flex !important; }
+          .tienda-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+        }
       `}</style>
 
       {/* Barra superior */}
@@ -174,12 +184,20 @@ export default function Tienda() {
       <BannerCarrusel imagenes={catalogo.tienda?.bannerUrls?.length ? catalogo.tienda.bannerUrls : (catalogo.tienda?.bannerUrl ? [catalogo.tienda.bannerUrl] : [])} />
 
       {/* Catálogo con menú de categorías al costado */}
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 24px", display: "flex", gap: 20, alignItems: "flex-start" }}>
-        <div style={{ width: 200, flexShrink: 0, background: "#fff", border: "1px solid #E4E2DD", borderRadius: 12, padding: 14, position: "sticky", top: 20 }}>
+      <div className="tienda-layout" style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 24px", display: "flex", gap: 20, alignItems: "flex-start" }}>
+        <button
+          className="tienda-toggle-categorias"
+          onClick={() => setMenuCategoriasAbierto((v) => !v)}
+          style={{ alignItems: "center", gap: 8, width: "100%", background: "#fff", border: "1px solid #E4E2DD", borderRadius: 10, padding: "10px 14px", fontSize: 13.5, fontWeight: 600, cursor: "pointer", justifyContent: "space-between" }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}><Tag size={15} /> Categorías{categoriaId ? `: ${catalogo.categorias.find((c) => c.id === categoriaId)?.nombre || ""}` : ""}</span>
+          <ChevronDown size={15} style={{ transform: menuCategoriasAbierto ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+        </button>
+        <div className={`tienda-sidebar${menuCategoriasAbierto ? " abierta" : ""}`} style={{ width: 200, flexShrink: 0, background: "#fff", border: "1px solid #E4E2DD", borderRadius: 12, padding: 14, position: "sticky", top: 20 }}>
           <div className="sg" style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Categorías</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <button
-              onClick={() => setCategoriaId(null)}
+              onClick={() => { setCategoriaId(null); setMenuCategoriasAbierto(false); }}
               style={{ textAlign: "left", background: !categoriaId ? "#EEF5F3" : "none", color: !categoriaId ? "#0F6B5C" : "#4A4642", border: "none", borderRadius: 6, padding: "7px 8px", fontSize: 13, fontWeight: !categoriaId ? 600 : 400, cursor: "pointer" }}
             >
               Todas
@@ -187,7 +205,7 @@ export default function Tienda() {
             {catalogo.categorias.map((c) => (
               <button
                 key={c.id}
-                onClick={() => setCategoriaId(c.id)}
+                onClick={() => { setCategoriaId(c.id); setMenuCategoriasAbierto(false); }}
                 style={{ textAlign: "left", background: categoriaId === c.id ? "#EEF5F3" : "none", color: categoriaId === c.id ? "#0F6B5C" : "#4A4642", border: "none", borderRadius: 6, padding: "7px 8px", fontSize: 13, fontWeight: categoriaId === c.id ? 600 : 400, cursor: "pointer", display: "flex", justifyContent: "space-between" }}
               >
                 <span>{c.nombre}</span>
@@ -206,7 +224,7 @@ export default function Tienda() {
               <div>No hay productos en esta categoría todavía.</div>
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 }}>
+            <div className="tienda-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 }}>
               {filtrados.map((p) => {
                 const enCarrito = carrito.find((it) => it.id === p.id)?.cantidad || 0;
                 const agotado = !p.disponible || enCarrito >= p.cantidadDisponible;
