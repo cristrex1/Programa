@@ -151,7 +151,7 @@ export default function Tienda() {
 
       {/* Header: logo + buscador + carrito */}
       <div style={{ background: "#fff", padding: "16px 24px", borderBottom: "1px solid #E4E2DD" }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+        <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center" }}>
             {catalogo.tienda?.logoUrl ? (
               <img src={catalogo.tienda.logoUrl} alt={catalogo.tienda?.nombreNegocio || "Logo"} style={{ height: 48, objectFit: "contain" }} />
@@ -172,7 +172,7 @@ export default function Tienda() {
 
       {/* Menú */}
       <div style={{ background: "#6B6560", padding: "0 24px" }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex" }}>
+        <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex" }}>
           <button onClick={() => setVista("inicio")} style={{ background: vista === "inicio" ? "#fff" : "transparent", color: vista === "inicio" ? "#1C1D1F" : "#fff", border: "none", padding: "10px 20px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Inicio</button>
           <button onClick={() => setVista("servicios")} style={{ background: vista === "servicios" ? "#fff" : "transparent", color: vista === "servicios" ? "#1C1D1F" : "#fff", border: "none", padding: "10px 20px", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Servicios</button>
         </div>
@@ -184,7 +184,7 @@ export default function Tienda() {
       <BannerCarrusel imagenes={catalogo.tienda?.bannerUrls?.length ? catalogo.tienda.bannerUrls : (catalogo.tienda?.bannerUrl ? [catalogo.tienda.bannerUrl] : [])} />
 
       {/* Catálogo con menú de categorías al costado */}
-      <div className="tienda-layout" style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 24px", display: "flex", gap: 20, alignItems: "flex-start" }}>
+      <div className="tienda-layout" style={{ maxWidth: 1400, margin: "0 auto", padding: "20px 24px", display: "flex", gap: 20, alignItems: "flex-start" }}>
         <button
           className="tienda-toggle-categorias"
           onClick={() => setMenuCategoriasAbierto((v) => !v)}
@@ -409,7 +409,7 @@ function PaginaServicios({ whatsapp }) {
   const mensajeWpp = encodeURIComponent("¡Hola! Quiero consultar por sus servicios técnicos.");
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "48px 24px 60px" }}>
+    <div style={{ maxWidth: 1400, margin: "0 auto", padding: "48px 24px 60px" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&display=swap');
         .servicios-mantenimiento { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(260px, 1.1fr); gap: 32px; }
@@ -518,7 +518,7 @@ function TiendaFooter({ tienda }) {
       </div>
       {tieneDatos && (
         <div style={{ background: "#6B6560", color: "#fff", padding: "16px 24px" }}>
-          <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 8, fontSize: 13.5 }}>
+          <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", flexDirection: "column", gap: 8, fontSize: 13.5 }}>
             {tienda.direccion && (
               <a
                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tienda.direccion)}`}
