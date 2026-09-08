@@ -973,7 +973,7 @@ function TabReparaciones({ data, persist, crearContacto, irAFacturar, imprimir }
                       {ESTADOS_ORDEN.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
                     </select>
                     <div style={{ display: "flex", gap: 4 }}>
-                      <button onClick={() => imprimir({ tipo: "ticket", orden: o, contacto })} title="Imprimir ticket" style={{ background: "none", border: "none", color: "#A7A29A", cursor: "pointer", padding: 4 }}><Printer size={14} /></button>
+                      <button onClick={() => imprimir({ tipo: "ticket", orden: o, contacto, tienda: data.tienda })} title="Imprimir ticket" style={{ background: "none", border: "none", color: "#A7A29A", cursor: "pointer", padding: 4 }}><Printer size={14} /></button>
                       <button onClick={() => { setEditing(o); setShowForm(true); }} style={{ background: "none", border: "none", color: "#A7A29A", cursor: "pointer", padding: 4 }}><Pencil size={14} /></button>
                       <button onClick={() => { if (confirm("¿Eliminar esta orden?")) remove(o.id); }} style={{ background: "none", border: "none", color: "#C97B7B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
                     </div>
@@ -1557,26 +1557,100 @@ function PrintArea({ payload }) {
     );
   }
   if (payload.tipo === "ticket") {
-    const { orden, contacto } = payload;
+    const { orden, contacto, tienda } = payload;
+    const t = tienda || {};
+    const cajaEstilo = { border: "1px solid #1C1D1F" };
     return (
-      <div style={{ fontFamily: "Inter, system-ui, sans-serif", color: "#1C1D1F" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #1C1D1F", paddingBottom: 8, marginBottom: 14 }}>
-          <h1 style={{ fontSize: 18, margin: 0 }}>Orden de reparación</h1>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{orden.numero}</div>
-            <div style={{ fontSize: 12, color: "#6B6560" }}>Ingreso: {fmtDate(orden.fechaIngreso)}</div>
+      <div style={{ fontFamily: "Inter, system-ui, sans-serif", color: "#1C1D1F", fontSize: 12.5 }}>
+
+        {/* ===== PARTE SUPERIOR: comprobante completo (queda en el local) ===== */}
+        <div style={{ border: "1px solid #1C1D1F", padding: 14 }}>
+          {/* Encabezado */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #1C1D1F", paddingBottom: 10, marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {t.logoUrl ? <img src={t.logoUrl} alt="" style={{ height: 44, objectFit: "contain" }} /> : <div className="sg" style={{ fontSize: 20, fontWeight: 700 }}>{t.nombreNegocio || "Orden de reparación"}</div>}
+              <div style={{ fontSize: 11 }}>
+                {t.direccion && <div>{t.direccion}</div>}
+                {t.telefono && <div>WhatsApp {t.telefono}</div>}
+              </div>
+            </div>
+          </div>
+
+          {/* Fila: Numero / Fecha */}
+          <div style={{ display: "flex", ...cajaEstilo, marginBottom: -1 }}>
+            <div style={{ flex: 1, padding: "6px 10px", borderRight: "1px solid #1C1D1F" }}><strong>Numero:</strong> {orden.numero}</div>
+            <div style={{ flex: 1, padding: "6px 10px" }}><strong>Fecha:</strong> {fmtDate(orden.fechaIngreso)}</div>
+          </div>
+          {/* Fila: Nombre / Celular / Serial */}
+          <div style={{ display: "flex", ...cajaEstilo, marginBottom: -1 }}>
+            <div style={{ flex: 1.3, padding: "6px 10px", borderRight: "1px solid #1C1D1F" }}><strong>Nombre:</strong><br />{contacto?.nombre}</div>
+            <div style={{ flex: 1, padding: "6px 10px", borderRight: "1px solid #1C1D1F" }}><strong>Celular</strong><br />{contacto?.telefono}</div>
+            <div style={{ flex: 1, padding: "6px 10px" }}><strong>Serial:</strong><br />{orden.numeroSerie}</div>
+          </div>
+          {/* Producto / Descripción */}
+          <div style={{ display: "flex", ...cajaEstilo, minHeight: 90 }}>
+            <div style={{ flex: 1, padding: "6px 10px", borderRight: "1px solid #1C1D1F" }}>
+              <div style={{ textAlign: "center", fontWeight: 700, borderBottom: "1px solid #1C1D1F", paddingBottom: 4, marginBottom: 6 }}>Producto</div>
+              {orden.producto}
+            </div>
+            <div style={{ flex: 1, padding: "6px 10px" }}>
+              <div style={{ textAlign: "center", fontWeight: 700, borderBottom: "1px solid #1C1D1F", paddingBottom: 4, marginBottom: 6 }}>Descripcion</div>
+              {orden.falla}
+            </div>
+          </div>
+
+          {/* Términos */}
+          <div style={{ fontSize: 9.5, lineHeight: 1.5, marginTop: 10, marginBottom: 10 }}>
+            * SI NO RETIRA EL EQUIPO EN 30 DIAS PASADA LA FECHA DE AVISO, PASA A SER DE NUESTRA PROPIEDAD PUDIENDO DISPONER DE EL PARA DESARME O BASURA<br />
+            *INFORME BIEN EL DEFECTO EXACTO POR EL CUAL TRAE SU EQUIPO<br />
+            *EL TIEMPO DE PRESUPUESTO ES DE 48 HS HABILES<br />
+            *EL TIEMPO DE REPARACION DEPENDE DEL TRABAJO Y DEFECTO DE SU EQUIPO
+          </div>
+
+          {/* Firma / Total */}
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 12 }}>FIRMA:</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+              <strong>Total</strong> $ <span style={{ display: "inline-block", minWidth: 70, borderBottom: "1px solid #1C1D1F" }}>&nbsp;</span>
+            </div>
           </div>
         </div>
-        <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-          <tbody>
-            <tr><td style={{ padding: "4px 0", color: "#6B6560", width: 140 }}>Cliente</td><td style={{ padding: "4px 0" }}>{contacto?.nombre}</td></tr>
-            {contacto?.dniCuit && <tr><td style={{ padding: "4px 0", color: "#6B6560" }}>DNI/CUIT</td><td style={{ padding: "4px 0" }}>{contacto.dniCuit}</td></tr>}
-            <tr><td style={{ padding: "4px 0", color: "#6B6560" }}>Producto</td><td style={{ padding: "4px 0" }}>{orden.producto}</td></tr>
-            <tr><td style={{ padding: "4px 0", color: "#6B6560" }}>N° de serie</td><td style={{ padding: "4px 0" }}>{orden.numeroSerie}</td></tr>
-            <tr><td style={{ padding: "4px 0", color: "#6B6560", verticalAlign: "top" }}>Falla</td><td style={{ padding: "4px 0" }}>{orden.falla}</td></tr>
-          </tbody>
-        </table>
-        <div style={{ marginTop: 30, fontSize: 11, color: "#8C8880" }}>Conserve este comprobante para retirar su producto.</div>
+
+        {/* ===== LÍNEA DE TROQUELADO ===== */}
+        <div style={{ borderTop: "2px dashed #1C1D1F", margin: "10px 0" }} />
+
+        {/* ===== PARTE INFERIOR: tique para el cliente ===== */}
+        <div style={{ border: "1px solid #1C1D1F", padding: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            {t.logoUrl ? <img src={t.logoUrl} alt="" style={{ height: 36, objectFit: "contain" }} /> : <div className="sg" style={{ fontSize: 16, fontWeight: 700 }}>{t.nombreNegocio || "Orden de reparación"}</div>}
+            <div style={{ fontSize: 10, textAlign: "right" }}>
+              {t.telefono && <div>Tel: {t.telefono}{t.direccion ? ` - ${t.direccion}` : ""}</div>}
+            </div>
+          </div>
+          <div style={{ fontSize: 10, fontWeight: 700, borderTop: "1px solid #1C1D1F", borderBottom: "1px solid #1C1D1F", padding: "5px 0", marginBottom: 8, display: "flex", flexWrap: "wrap", gap: 14 }}>
+            {t.telefono && <span>WHATSAPP {t.telefono}</span>}
+            {t.email && <span>{t.email}</span>}
+          </div>
+          <div style={{ display: "flex", ...cajaEstilo, marginBottom: -1 }}>
+            <div style={{ flex: 1.3, borderRight: "1px solid #1C1D1F" }}>
+              <div style={{ padding: "6px 10px", borderBottom: "1px solid #1C1D1F" }}><strong>Numero:</strong> {orden.numero}</div>
+              <div style={{ padding: "6px 10px", borderBottom: "1px solid #1C1D1F" }}><strong>Nombre:</strong><br />{contacto?.nombre}</div>
+              <div style={{ padding: "6px 10px", borderBottom: "1px solid #1C1D1F" }}><strong>Fecha:</strong> {fmtDate(orden.fechaIngreso)}</div>
+              <div style={{ padding: "6px 10px" }}><strong>Serial:</strong> {orden.numeroSerie}</div>
+            </div>
+            <div style={{ flex: 2, padding: "6px 10px" }}>
+              <div style={{ textAlign: "center", fontWeight: 700, borderBottom: "1px solid #1C1D1F", paddingBottom: 4, marginBottom: 6 }}>Descripcion (Fallas)</div>
+              <div style={{ fontWeight: 600 }}>{orden.producto}</div>
+              <div style={{ marginTop: 4 }}>{orden.falla}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 9, lineHeight: 1.5, marginTop: 10 }}>
+            * SI NO RETIRA EL EQUIPO EN 30 DIAS PASADA LA FECHA DE AVISO, PASA A SER DE NUESTRA PROPIEDAD PUDIENDO DISPONER DE EL PARA DESARME O BASURA<br />
+            *INFORME BIEN EL DEFECTO EXACTO POR EL CUAL TRAE SU EQUIPO<br />
+            *EL TIEMPO DE PRESUPUESTO ES DE 48 HS HABILES<br />
+            *EL TIEMPO DE REPARACION DEPENDE DEL TRABAJO Y DEFECTO DE SU EQUIPO
+          </div>
+        </div>
       </div>
     );
   }
