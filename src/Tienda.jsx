@@ -501,7 +501,18 @@ function TiendaFooter({ tienda }) {
       {tieneDatos && (
         <div style={{ background: "#6B6560", color: "#fff", padding: "16px 24px" }}>
           <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 8, fontSize: 13.5 }}>
-            {tienda.direccion && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><MapPin size={15} /> {tienda.direccion}</div>}
+            {tienda.direccion && (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tienda.direccion)}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: "flex", alignItems: "center", gap: 8, color: "#fff", textDecoration: "none" }}
+                onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+              >
+                <MapPin size={15} /> {tienda.direccion}
+              </a>
+            )}
             {tienda.horario && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Clock size={15} /> {tienda.horario}</div>}
             {tienda.telefono && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Phone size={15} /> {tienda.telefono}</div>}
             {tienda.email && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Mail size={15} /> {tienda.email}</div>}
