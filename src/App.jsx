@@ -3,9 +3,10 @@ import {
   Package, Wrench, Users, Receipt, Building2, Search, Plus, X, Trash2, Pencil,
   Calendar, Phone, Mail, MapPin, CreditCard, Printer, Tag, ChevronDown, ChevronRight,
   ChevronLeft, AlertCircle, CircleDot, AlertTriangle, FileText, CheckCircle2, Clock,
-  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, RefreshCw, ImagePlus, ImageOff, LogOut, Mail as MailIcon, Lock, ShoppingCart, Package as PackageIcon, Store,
+  Bell, ArrowUpCircle, ArrowDownCircle, ShieldAlert, Loader2, User, Link2, RefreshCw, ImagePlus, ImageOff, LogOut, Mail as MailIcon, Lock, ShoppingCart, Package as PackageIcon, Store, Upload, FileSpreadsheet, FolderOpen,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import * as XLSX from "xlsx";
 
 // ---------- Helpers ----------
 function uid() { return Math.random().toString(36).slice(2, 10); }
@@ -82,7 +83,7 @@ const CONDICIONES_IVA = [
   { value: "exento", label: "Exento", factura: "C" },
 ];
 
-const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null, tienda: { nombreNegocio: "", logoUrl: "", bannerUrls: [], direccion: "", horario: "", telefono: "", email: "", instagram: "", facebookUrl: "", youtubeUrl: "" } };
+const EMPTY = { contactos: [], movimientos: [], servicios: [], productos: [], unidades: [], ordenes: [], ventas: [], categorias: [], dolarVenta: 0, dolarFecha: null, tienda: { nombreNegocio: "", logoUrl: "", bannerUrls: [], direccion: "", horario: "", telefono: "", email: "", instagram: "", facebookUrl: "", youtubeUrl: "", sitioWeb: "" } };
 
 const TABS = [
   { id: "stock", label: "Stock", icon: Package, accent: "#0F6B5C" },
@@ -531,6 +532,7 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
   const { productos, unidades, categorias, dolarVenta, tienda } = data;
   const [showCategorias, setShowCategorias] = useState(false);
   const [showTienda, setShowTienda] = useState(false);
+  const [showImportar, setShowImportar] = useState(false);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState({});
   const [showProductForm, setShowProductForm] = useState(false);
@@ -581,6 +583,7 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
         <button onClick={() => imprimir({ tipo: "inventario", productos: filtered, unidades, categorias, dolarVenta })} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Printer size={15} /> Imprimir</button>
         <button onClick={() => setShowCategorias(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Tag size={15} /> Categorías</button>
         <button onClick={() => setShowTienda(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><ShoppingCart size={15} /> Tienda online</button>
+        <button onClick={() => setShowImportar(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><FileSpreadsheet size={15} /> Importar Excel</button>
         <button onClick={() => { setEditingProduct(null); setShowProductForm(true); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 10, padding: "0 16px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Plus size={16} /> Producto</button>
       </div>
 
@@ -674,6 +677,235 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
           <ConfiguracionTiendaModal tienda={tienda} subirImagen={subirImagen} onGuardar={(t) => { persist({ tienda: t }); setShowTienda(false); }} />
         </Modal>
       )}
+      {showImportar && (
+        <Modal title="Importar productos desde Excel" onClose={() => setShowImportar(false)} wide>
+          <ImportarExcelModal
+            categoriasExistentes={categorias}
+            subirImagen={subirImagen}
+            onImportar={(payload) => {
+              persist({
+                categorias: payload.categorias,
+                productos: [...productos, ...payload.productosNuevos],
+                unidades: [...unidades, ...payload.unidadesNuevas],
+              });
+              setShowImportar(false);
+            }}
+          />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// Normaliza encabezados de columnas para hacer el matching más flexible
+function normalizarClave(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+}
+const CANDIDATOS_COLUMNAS = {
+  nombre: ["nombre", "producto", "articulo"],
+  costo: ["costo", "costousd", "costoud", "preciocosto", "preciodecostoendolares", "costoendolares", "costoendolar", "preciocostousd"],
+  descripcion: ["descripcion", "desc", "detalle"],
+  categoria: ["categoria", "rubro"],
+  imagen: ["imagen", "foto", "rutaimagen", "direccionimagen", "imagenpc", "fotoruta"],
+  codigo: ["codigo", "serie", "numerodeserie", "nserie", "ns", "numeroserie"],
+};
+function detectarColumnas(filaEjemplo) {
+  const claves = Object.keys(filaEjemplo);
+  const mapa = {};
+  for (const campo of Object.keys(CANDIDATOS_COLUMNAS)) {
+    const candidatos = CANDIDATOS_COLUMNAS[campo];
+    const encontrada = claves.find((k) => candidatos.includes(normalizarClave(k)));
+    mapa[campo] = encontrada || null;
+  }
+  return mapa;
+}
+function nombreArchivo(ruta) {
+  if (!ruta) return "";
+  return String(ruta).split(/[\\/]/).pop().trim().toLowerCase();
+}
+
+function ImportarExcelModal({ categoriasExistentes, subirImagen, onImportar }) {
+  const [filas, setFilas] = useState(null);
+  const [columnas, setColumnas] = useState(null);
+  const [archivosImagenes, setArchivosImagenes] = useState({}); // nombreArchivo -> File
+  const [importando, setImportando] = useState(false);
+  const [progreso, setProgreso] = useState("");
+  const [error, setError] = useState("");
+
+  function onExcelChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError("");
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: "array" });
+        const hoja = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(hoja, { defval: "" });
+        if (json.length === 0) { setError("El Excel no tiene filas."); return; }
+        setColumnas(detectarColumnas(json[0]));
+        setFilas(json);
+      } catch (err) {
+        setError("No se pudo leer el archivo. Verificá que sea un .xlsx válido.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function onCarpetaChange(e) {
+    const files = Array.from(e.target.files || []);
+    const mapa = {};
+    files.forEach((f) => { mapa[f.name.toLowerCase()] = f; });
+    setArchivosImagenes(mapa);
+  }
+
+  const filasProcesadas = useMemo(() => {
+    if (!filas || !columnas) return [];
+    return filas.map((f) => {
+      const nombre = columnas.nombre ? String(f[columnas.nombre] || "").trim() : "";
+      const costo = columnas.costo ? Number(f[columnas.costo]) || 0 : 0;
+      const descripcion = columnas.descripcion ? String(f[columnas.descripcion] || "").trim() : "";
+      const categoria = columnas.categoria ? String(f[columnas.categoria] || "").trim() : "";
+      const rutaImagen = columnas.imagen ? String(f[columnas.imagen] || "").trim() : "";
+      const codigo = columnas.codigo ? String(f[columnas.codigo] || "").trim() : "";
+      const archivoImagen = nombreArchivo(rutaImagen);
+      return { nombre, costo, descripcion, categoria, rutaImagen, archivoImagen, codigo };
+    }).filter((f) => f.nombre);
+  }, [filas, columnas]);
+
+  const coincidencias = useMemo(() => {
+    let encontradas = 0, total = 0;
+    filasProcesadas.forEach((f) => {
+      if (f.archivoImagen) { total++; if (archivosImagenes[f.archivoImagen]) encontradas++; }
+    });
+    return { encontradas, total };
+  }, [filasProcesadas, archivosImagenes]);
+
+  async function confirmarImportacion() {
+    setImportando(true);
+    setError("");
+    try {
+      const categoriasNuevas = [];
+      const mapaCategorias = {};
+      categoriasExistentes.forEach((c) => { mapaCategorias[normalizarClave(c.nombre)] = c.id; });
+
+      filasProcesadas.forEach((f) => {
+        if (!f.categoria) return;
+        const key = normalizarClave(f.categoria);
+        if (!mapaCategorias[key]) {
+          const nueva = { id: uid(), nombre: f.categoria, margen: 0 };
+          categoriasNuevas.push(nueva);
+          mapaCategorias[key] = nueva.id;
+        }
+      });
+
+      const productosNuevos = [];
+      const unidadesNuevas = [];
+
+      for (let i = 0; i < filasProcesadas.length; i++) {
+        const f = filasProcesadas[i];
+        setProgreso(`Procesando ${i + 1} de ${filasProcesadas.length}…`);
+        let imagenUrl = "";
+        const archivo = f.archivoImagen ? archivosImagenes[f.archivoImagen] : null;
+        if (archivo) {
+          try { imagenUrl = await subirImagen(archivo); } catch (e) { /* si falla la imagen, seguimos sin ella */ }
+        }
+        const productoId = uid();
+        productosNuevos.push({
+          id: productoId,
+          nombre: f.nombre,
+          categoriaId: f.categoria ? mapaCategorias[normalizarClave(f.categoria)] : null,
+          costoUSD: f.costo,
+          margen: f.categoria ? null : 30,
+          controlSerie: true,
+          cantidadStock: null,
+          numeroSerieUnico: "",
+          imagenUrl,
+          descripcion: f.descripcion,
+        });
+        if (f.codigo) {
+          unidadesNuevas.push({ id: uid(), productId: productoId, numeroSerie: f.codigo, fechaIngreso: todayISO(), estado: "disponible", notas: "" });
+        }
+      }
+
+      onImportar({
+        categorias: [...categoriasExistentes, ...categoriasNuevas],
+        productosNuevos,
+        unidadesNuevas,
+      });
+    } catch (e) {
+      setError("Ocurrió un error durante la importación.");
+    }
+    setImportando(false);
+  }
+
+  return (
+    <div>
+      {!filas ? (
+        <>
+          <div style={{ fontSize: 12.5, color: "#6B6560", background: "#FAFAF8", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>
+            El Excel debe tener columnas para: <strong>Nombre</strong>, <strong>Costo (U$D)</strong>, <strong>Descripción</strong>, <strong>Categoría</strong>, <strong>Imagen</strong> (la ruta en tu PC) y <strong>Código</strong> (número de serie). No importa el orden ni mayúsculas/minúsculas exactas.
+          </div>
+          <Field label="Archivo Excel (.xlsx)">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, background: "#EEF5F3", color: "#0F6B5C", border: "1px dashed #CFE3DD", borderRadius: 10, padding: "14px", fontSize: 13.5, fontWeight: 600, cursor: "pointer", justifyContent: "center" }}>
+              <Upload size={16} /> Elegir archivo Excel
+              <input type="file" accept=".xlsx,.xls" onChange={onExcelChange} style={{ display: "none" }} />
+            </label>
+          </Field>
+          {error && <div style={{ fontSize: 12, color: "#B23A3A" }}>{error}</div>}
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 13, marginBottom: 10 }}>Se encontraron <strong>{filasProcesadas.length}</strong> productos en el archivo.</div>
+
+          <Field label="Carpeta con las fotos (opcional)">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, background: "#EEF5F3", color: "#0F6B5C", border: "1px dashed #CFE3DD", borderRadius: 10, padding: "12px", fontSize: 13, fontWeight: 600, cursor: "pointer", justifyContent: "center" }}>
+              <FolderOpen size={16} /> Seleccionar carpeta de imágenes
+              <input type="file" webkitdirectory="" directory="" multiple onChange={onCarpetaChange} style={{ display: "none" }} />
+            </label>
+            {coincidencias.total > 0 && (
+              <div style={{ fontSize: 12, color: coincidencias.encontradas === coincidencias.total ? "#0F6B5C" : "#8A5A17", marginTop: 6 }}>
+                {coincidencias.encontradas} de {coincidencias.total} fotos encontradas en la carpeta seleccionada.
+              </div>
+            )}
+          </Field>
+
+          <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid #E4E2DD", borderRadius: 10, marginBottom: 14 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead style={{ position: "sticky", top: 0, background: "#FAFAF8" }}>
+                <tr>
+                  <th style={{ textAlign: "left", padding: "6px 8px" }}>Nombre</th>
+                  <th style={{ textAlign: "left", padding: "6px 8px" }}>Categoría</th>
+                  <th style={{ textAlign: "right", padding: "6px 8px" }}>Costo U$D</th>
+                  <th style={{ textAlign: "left", padding: "6px 8px" }}>Código</th>
+                  <th style={{ textAlign: "center", padding: "6px 8px" }}>Foto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filasProcesadas.map((f, i) => (
+                  <tr key={i} style={{ borderTop: "1px solid #EFEDE8" }}>
+                    <td style={{ padding: "5px 8px" }}>{f.nombre}</td>
+                    <td style={{ padding: "5px 8px" }}>{f.categoria || "—"}</td>
+                    <td style={{ padding: "5px 8px", textAlign: "right" }}>{f.costo}</td>
+                    <td style={{ padding: "5px 8px" }} className="mono">{f.codigo || "—"}</td>
+                    <td style={{ padding: "5px 8px", textAlign: "center" }}>
+                      {!f.archivoImagen ? "—" : archivosImagenes[f.archivoImagen] ? "✅" : "❌"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {error && <div style={{ fontSize: 12, color: "#B23A3A", marginBottom: 10 }}>{error}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { setFilas(null); setColumnas(null); setArchivosImagenes({}); }} disabled={importando} style={{ background: "none", border: "1px solid #E4E2DD", borderRadius: 9, padding: "10px 16px", fontSize: 13.5, cursor: "pointer" }}>Elegir otro archivo</button>
+            <button onClick={confirmarImportacion} disabled={importando} style={{ flex: 1, background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+              {importando ? progreso || "Importando…" : `Importar ${filasProcesadas.length} productos`}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -689,6 +921,7 @@ function ConfiguracionTiendaModal({ tienda, subirImagen, onGuardar }) {
   const [instagram, setInstagram] = useState(tienda?.instagram || "");
   const [facebookUrl, setFacebookUrl] = useState(tienda?.facebookUrl || "");
   const [youtubeUrl, setYoutubeUrl] = useState(tienda?.youtubeUrl || "");
+  const [sitioWeb, setSitioWeb] = useState(tienda?.sitioWeb || "");
   const [subiendo, setSubiendo] = useState("");
   const [error, setError] = useState("");
 
@@ -756,8 +989,9 @@ function ConfiguracionTiendaModal({ tienda, subirImagen, onGuardar }) {
         <div style={{ flex: 1 }}><Field label="Facebook (link, opcional)"><input style={inputStyle} value={facebookUrl} onChange={(e) => setFacebookUrl(e.target.value)} placeholder="https://facebook.com/tunegocio" /></Field></div>
         <div style={{ flex: 1 }}><Field label="YouTube (link, opcional)"><input style={inputStyle} value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://youtube.com/@tunegocio" /></Field></div>
       </div>
+      <Field label="Sitio web (opcional)"><input style={inputStyle} value={sitioWeb} onChange={(e) => setSitioWeb(e.target.value)} placeholder="www.tunegocio.com.ar" /></Field>
       {error && <div style={{ fontSize: 12, color: "#B23A3A", marginBottom: 10 }}>{error}</div>}
-      <button onClick={() => onGuardar({ nombreNegocio: nombreNegocio.trim(), logoUrl, bannerUrls: bannerUrls.filter(Boolean), direccion: direccion.trim(), horario: horario.trim(), telefono: telefono.trim(), email: email.trim(), instagram: instagram.trim(), facebookUrl: facebookUrl.trim(), youtubeUrl: youtubeUrl.trim() })} style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Guardar</button>
+      <button onClick={() => onGuardar({ nombreNegocio: nombreNegocio.trim(), logoUrl, bannerUrls: bannerUrls.filter(Boolean), direccion: direccion.trim(), horario: horario.trim(), telefono: telefono.trim(), email: email.trim(), instagram: instagram.trim(), facebookUrl: facebookUrl.trim(), youtubeUrl: youtubeUrl.trim(), sitioWeb: sitioWeb.trim() })} style={{ width: "100%", background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Guardar</button>
     </div>
   );
 }
@@ -1673,23 +1907,27 @@ function PrintArea({ payload }) {
     const t = tienda || {};
     return (
       <div style={{ fontFamily: "Inter, system-ui, sans-serif", color: "#1C1D1F" }}>
-        {(t.logoUrl || t.nombreNegocio || t.direccion || t.telefono || t.email) && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 12, marginBottom: 12, borderBottom: "1px solid #E4E2DD" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {t.logoUrl ? <img src={t.logoUrl} alt="" style={{ height: 46, objectFit: "contain" }} /> : <div className="sg" style={{ fontSize: 18, fontWeight: 700 }}>{t.nombreNegocio}</div>}
-              <div style={{ fontSize: 10.5, color: "#6B6560" }}>
-                {t.direccion && <div>{t.direccion}</div>}
-                {t.telefono && <div>Tel/WhatsApp: {t.telefono}</div>}
-                {t.email && <div>{t.email}</div>}
-              </div>
-            </div>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", paddingBottom: 12, marginBottom: 14, borderBottom: "1px solid #1C1D1F" }}>
+          {/* Columna izquierda: datos del negocio */}
+          <div style={{ fontSize: 11, color: "#1C1D1F", lineHeight: 1.6, flex: 1 }}>
+            {t.direccion && <div>{t.direccion}</div>}
+            {t.telefono && <div>Whatsapp: {t.telefono}</div>}
+            {t.sitioWeb && <div>{t.sitioWeb}</div>}
+            <div style={{ marginTop: 10 }}>Fecha: {fmtDate(venta.fecha)}</div>
           </div>
-        )}
-        <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #1C1D1F", paddingBottom: 8, marginBottom: 14 }}>
-          <h1 style={{ fontSize: 18, margin: 0 }}>{venta.tipoComprobante === "factura" ? "Factura" : "Remito"}</h1>
-          <div style={{ textAlign: "right" }}><div style={{ fontSize: 13, fontWeight: 600 }}>{venta.numero}</div><div style={{ fontSize: 12, color: "#6B6560" }}>{fmtDate(venta.fecha)}</div></div>
+          {/* Columna central: logo */}
+          <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+            {t.logoUrl ? <img src={t.logoUrl} alt="" style={{ height: 70, objectFit: "contain" }} /> : <div className="sg" style={{ fontSize: 18, fontWeight: 700, textAlign: "center" }}>{t.nombreNegocio}</div>}
+          </div>
+          {/* Columna derecha: datos del cliente y del comprobante */}
+          <div style={{ fontSize: 11, color: "#1C1D1F", lineHeight: 1.6, flex: 1, textAlign: "right" }}>
+            <div>Nombre: {contacto?.nombre}</div>
+            <div>Direccion: {contacto?.direccion || ""}</div>
+            <div>Celular: {contacto?.telefono || ""}</div>
+            <div>Cuit: {contacto?.dniCuit || ""}</div>
+            <div style={{ marginTop: 10, fontWeight: 700 }}>{venta.tipoComprobante === "factura" ? "Factura" : "Remito"}: {venta.numero}</div>
+          </div>
         </div>
-        <div style={{ fontSize: 13, marginBottom: 10 }}><strong>{contacto?.nombre}</strong>{contacto?.dniCuit ? ` · ${contacto.dniCuit}` : ""}</div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead><tr style={{ borderBottom: "1px solid #1C1D1F" }}><th style={{ textAlign: "left", padding: "6px 4px" }}>Descripción</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Cant.</th><th style={{ textAlign: "right", padding: "6px 4px" }}>P.Unit.</th><th style={{ textAlign: "right", padding: "6px 4px" }}>Subtotal</th></tr></thead>
           <tbody>{agruparItemsVenta(venta.items).map((it) => <tr key={it.id} style={{ borderBottom: "1px solid #E4E2DD" }}><td style={{ padding: "6px 4px" }}><div>{it.descripcion}</div>{it.series.map((s) => <div key={s} style={{ fontSize: 10.5, color: "#6B6560" }}>N/S: {s}</div>)}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{it.cantidad}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(it.precioUnitario)}</td><td style={{ padding: "6px 4px", textAlign: "right" }}>{fmtMoney(it.subtotal)}</td></tr>)}</tbody>
