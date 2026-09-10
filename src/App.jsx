@@ -724,10 +724,27 @@ function nombreArchivo(ruta) {
   return String(ruta).split(/[\\/]/).pop().trim().toLowerCase();
 }
 
+function parseCosto(valor) {
+  if (valor === null || valor === undefined || valor === "") return 0;
+  if (typeof valor === "number") return valor;
+  let s = String(valor).trim();
+  s = s.replace(/[^0-9.,-]/g, ""); // saca $, U$D, espacios, letras
+  if (s.includes(",") && s.includes(".")) {
+    // asumimos formato latino: 1.234,56 -> 1234.56
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else if (s.includes(",")) {
+    s = s.replace(",", ".");
+  }
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function ImportarExcelModal({ categoriasExistentes, subirImagen, onImportar }) {
   const [filas, setFilas] = useState(null);
-  const [columnas, setColumnas] = useState(null);
+  const [encabezados, setEncabezados] = useState([]);
+  const [mapeo, setMapeo] = useState({ nombre: "", costo: "", descripcion: "", categoria: "", imagen: "", codigo: "" });
   const [archivosImagenes, setArchivosImagenes] = useState({}); // nombreArchivo -> File
+  const [paso, setPaso] = useState("archivo"); // archivo -> mapeo -> preview
   const [importando, setImportando] = useState(false);
   const [progreso, setProgreso] = useState("");
   const [error, setError] = useState("");
@@ -743,8 +760,11 @@ function ImportarExcelModal({ categoriasExistentes, subirImagen, onImportar }) {
         const hoja = wb.Sheets[wb.SheetNames[0]];
         const json = XLSX.utils.sheet_to_json(hoja, { defval: "" });
         if (json.length === 0) { setError("El Excel no tiene filas."); return; }
-        setColumnas(detectarColumnas(json[0]));
+        const claves = Object.keys(json[0]);
+        setEncabezados(claves);
+        setMapeo(detectarColumnas(json[0]));
         setFilas(json);
+        setPaso("mapeo");
       } catch (err) {
         setError("No se pudo leer el archivo. Verificá que sea un .xlsx válido.");
       }
@@ -760,18 +780,18 @@ function ImportarExcelModal({ categoriasExistentes, subirImagen, onImportar }) {
   }
 
   const filasProcesadas = useMemo(() => {
-    if (!filas || !columnas) return [];
+    if (!filas) return [];
     return filas.map((f) => {
-      const nombre = columnas.nombre ? String(f[columnas.nombre] || "").trim() : "";
-      const costo = columnas.costo ? Number(f[columnas.costo]) || 0 : 0;
-      const descripcion = columnas.descripcion ? String(f[columnas.descripcion] || "").trim() : "";
-      const categoria = columnas.categoria ? String(f[columnas.categoria] || "").trim() : "";
-      const rutaImagen = columnas.imagen ? String(f[columnas.imagen] || "").trim() : "";
-      const codigo = columnas.codigo ? String(f[columnas.codigo] || "").trim() : "";
+      const nombre = mapeo.nombre ? String(f[mapeo.nombre] || "").trim() : "";
+      const costo = mapeo.costo ? parseCosto(f[mapeo.costo]) : 0;
+      const descripcion = mapeo.descripcion ? String(f[mapeo.descripcion] || "").trim() : "";
+      const categoria = mapeo.categoria ? String(f[mapeo.categoria] || "").trim() : "";
+      const rutaImagen = mapeo.imagen ? String(f[mapeo.imagen] || "").trim() : "";
+      const codigo = mapeo.codigo ? String(f[mapeo.codigo] || "").trim() : "";
       const archivoImagen = nombreArchivo(rutaImagen);
       return { nombre, costo, descripcion, categoria, rutaImagen, archivoImagen, codigo };
     }).filter((f) => f.nombre);
-  }, [filas, columnas]);
+  }, [filas, mapeo]);
 
   const coincidencias = useMemo(() => {
     let encontradas = 0, total = 0;
@@ -839,12 +859,22 @@ function ImportarExcelModal({ categoriasExistentes, subirImagen, onImportar }) {
     setImportando(false);
   }
 
+  const selectEstilo = { ...inputStyle, fontSize: 13 };
+  const campos = [
+    { key: "nombre", label: "Nombre del producto", obligatorio: true },
+    { key: "costo", label: "Costo (U$D)", obligatorio: true },
+    { key: "descripcion", label: "Descripción", obligatorio: false },
+    { key: "categoria", label: "Categoría", obligatorio: false },
+    { key: "imagen", label: "Ruta de la imagen", obligatorio: false },
+    { key: "codigo", label: "Código / N° de serie", obligatorio: false },
+  ];
+
   return (
     <div>
-      {!filas ? (
+      {paso === "archivo" && (
         <>
           <div style={{ fontSize: 12.5, color: "#6B6560", background: "#FAFAF8", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>
-            El Excel debe tener columnas para: <strong>Nombre</strong>, <strong>Costo (U$D)</strong>, <strong>Descripción</strong>, <strong>Categoría</strong>, <strong>Imagen</strong> (la ruta en tu PC) y <strong>Código</strong> (número de serie). No importa el orden ni mayúsculas/minúsculas exactas.
+            Subí el Excel y en el paso siguiente vas a poder elegir vos mismo qué columna corresponde a cada dato — no hace falta que los nombres coincidan.
           </div>
           <Field label="Archivo Excel (.xlsx)">
             <label style={{ display: "flex", alignItems: "center", gap: 8, background: "#EEF5F3", color: "#0F6B5C", border: "1px dashed #CFE3DD", borderRadius: 10, padding: "14px", fontSize: 13.5, fontWeight: 600, cursor: "pointer", justifyContent: "center" }}>
@@ -854,7 +884,47 @@ function ImportarExcelModal({ categoriasExistentes, subirImagen, onImportar }) {
           </Field>
           {error && <div style={{ fontSize: 12, color: "#B23A3A" }}>{error}</div>}
         </>
-      ) : (
+      )}
+
+      {paso === "mapeo" && (
+        <>
+          <div style={{ fontSize: 12.5, color: "#6B6560", marginBottom: 14 }}>
+            Elegí qué columna del Excel corresponde a cada dato. Te dejamos elegidas las que nos parecieron más probables — revisalas.
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+            {campos.map((c) => (
+              <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 170, fontSize: 13, fontWeight: 600 }}>{c.label}{c.obligatorio && <span style={{ color: "#B23A3A" }}> *</span>}</div>
+                <select
+                  style={{ ...selectEstilo, flex: 1 }}
+                  value={mapeo[c.key]}
+                  onChange={(e) => setMapeo((m) => ({ ...m, [c.key]: e.target.value }))}
+                >
+                  <option value="">— Ninguna —</option>
+                  {encabezados.map((h) => <option key={h} value={h}>{h}</option>)}
+                </select>
+                {mapeo[c.key] && filas[0] && (
+                  <div style={{ fontSize: 11.5, color: "#A7A29A", width: 140, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    ej: {String(filas[0][mapeo[c.key]])}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {error && <div style={{ fontSize: 12, color: "#B23A3A", marginBottom: 10 }}>{error}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { setFilas(null); setPaso("archivo"); }} style={{ background: "none", border: "1px solid #E4E2DD", borderRadius: 9, padding: "10px 16px", fontSize: 13.5, cursor: "pointer" }}>Elegir otro archivo</button>
+            <button
+              onClick={() => { if (!mapeo.nombre || !mapeo.costo) { setError("Elegí al menos la columna de Nombre y la de Costo."); return; } setError(""); setPaso("preview"); }}
+              style={{ flex: 1, background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+            >
+              Continuar
+            </button>
+          </div>
+        </>
+      )}
+
+      {paso === "preview" && (
         <>
           <div style={{ fontSize: 13, marginBottom: 10 }}>Se encontraron <strong>{filasProcesadas.length}</strong> productos en el archivo.</div>
 
@@ -886,7 +956,7 @@ function ImportarExcelModal({ categoriasExistentes, subirImagen, onImportar }) {
                   <tr key={i} style={{ borderTop: "1px solid #EFEDE8" }}>
                     <td style={{ padding: "5px 8px" }}>{f.nombre}</td>
                     <td style={{ padding: "5px 8px" }}>{f.categoria || "—"}</td>
-                    <td style={{ padding: "5px 8px", textAlign: "right" }}>{f.costo}</td>
+                    <td style={{ padding: "5px 8px", textAlign: "right", color: f.costo === 0 ? "#B23A3A" : "inherit" }}>{f.costo}</td>
                     <td style={{ padding: "5px 8px" }} className="mono">{f.codigo || "—"}</td>
                     <td style={{ padding: "5px 8px", textAlign: "center" }}>
                       {!f.archivoImagen ? "—" : archivosImagenes[f.archivoImagen] ? "✅" : "❌"}
@@ -899,7 +969,7 @@ function ImportarExcelModal({ categoriasExistentes, subirImagen, onImportar }) {
 
           {error && <div style={{ fontSize: 12, color: "#B23A3A", marginBottom: 10 }}>{error}</div>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => { setFilas(null); setColumnas(null); setArchivosImagenes({}); }} disabled={importando} style={{ background: "none", border: "1px solid #E4E2DD", borderRadius: 9, padding: "10px 16px", fontSize: 13.5, cursor: "pointer" }}>Elegir otro archivo</button>
+            <button onClick={() => setPaso("mapeo")} disabled={importando} style={{ background: "none", border: "1px solid #E4E2DD", borderRadius: 9, padding: "10px 16px", fontSize: 13.5, cursor: "pointer" }}>Volver a elegir columnas</button>
             <button onClick={confirmarImportacion} disabled={importando} style={{ flex: 1, background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 9, padding: 10, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
               {importando ? progreso || "Importando…" : `Importar ${filasProcesadas.length} productos`}
             </button>
