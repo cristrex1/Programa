@@ -534,6 +534,15 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
   const [showTienda, setShowTienda] = useState(false);
   const [showImportar, setShowImportar] = useState(false);
   const [query, setQuery] = useState("");
+
+  function vaciarStock() {
+    if (productos.length === 0) return;
+    const primero = confirm(`Esto va a borrar los ${productos.length} productos y todas sus unidades/números de serie. Esta acción no se puede deshacer. ¿Continuar?`);
+    if (!primero) return;
+    const segundo = confirm("Confirmá de nuevo: ¿realmente querés vaciar todo el stock?");
+    if (!segundo) return;
+    persist({ productos: [], unidades: [] });
+  }
   const [expanded, setExpanded] = useState({});
   const [showProductForm, setShowProductForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -584,6 +593,7 @@ function TabStock({ data, persist, imprimir, crearCategoria, editarCategoria, el
         <button onClick={() => setShowCategorias(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Tag size={15} /> Categorías</button>
         <button onClick={() => setShowTienda(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><ShoppingCart size={15} /> Tienda online</button>
         <button onClick={() => setShowImportar(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#1C1D1F", border: "1px solid #E4E2DD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><FileSpreadsheet size={15} /> Importar Excel</button>
+        <button onClick={vaciarStock} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", color: "#B23A3A", border: "1px solid #F0DDDD", borderRadius: 10, padding: "0 14px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Trash2 size={15} /> Vaciar stock</button>
         <button onClick={() => { setEditingProduct(null); setShowProductForm(true); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#0F6B5C", color: "#fff", border: "none", borderRadius: 10, padding: "0 16px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}><Plus size={16} /> Producto</button>
       </div>
 
